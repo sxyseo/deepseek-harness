@@ -322,6 +322,13 @@ function installLockStat(lockPath) {
   }
 }
 
+function sameLockFileIdentity(a, b) {
+  // Windows path stats report dev 0 when the volume serial is unavailable while
+  // handle stats carry it; a 0 on either side rests the identity on ino alone.
+  if (a.ino !== b.ino) return false
+  return a.dev === b.dev || a.dev === 0 || b.dev === 0
+}
+
 function parseInstallLock(record) {
   const match = /^([1-9]\d*) ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\n$/i.exec(record)
   if (match === null) return undefined
@@ -362,8 +369,7 @@ function releaseInstallLock(lockPath, ownedRecord, ownedStat) {
     currentStat === undefined
     || !currentStat.isFile()
     || currentStat.isSymbolicLink()
-    || currentStat.dev !== ownedStat.dev
-    || currentStat.ino !== ownedStat.ino
+    || !sameLockFileIdentity(currentStat, ownedStat)
     || readInstallLock(lockPath) !== ownedRecord
   ) {
     throw lockOwnershipChangedError(lockPath)
@@ -402,8 +408,7 @@ async function acquireInstallLock(commonDirectory) {
         publishedStat === undefined
         || !publishedStat.isFile()
         || publishedStat.isSymbolicLink()
-        || publishedStat.dev !== ownedStat.dev
-        || publishedStat.ino !== ownedStat.ino
+        || !sameLockFileIdentity(publishedStat, ownedStat)
       ) {
         throw lockOwnershipChangedError(lockPath)
       }
@@ -422,7 +427,7 @@ async function acquireInstallLock(commonDirectory) {
       if (!verifiedStat.isFile() || verifiedStat.isSymbolicLink()) {
         throw manualLockRecoveryError(lockPath, 'invalid')
       }
-      if (verifiedStat.dev !== existingStat.dev || verifiedStat.ino !== existingStat.ino) continue
+      if (!sameLockFileIdentity(verifiedStat, existingStat)) continue
       const owner = parseInstallLock(existingRecord)
       if (owner === undefined) {
         if (!installLockRecordMayBeIncomplete(existingRecord)) {
@@ -431,8 +436,7 @@ async function acquireInstallLock(commonDirectory) {
         const now = Date.now()
         if (
           initializingLock === undefined
-          || initializingLock.dev !== existingStat.dev
-          || initializingLock.ino !== existingStat.ino
+          || !sameLockFileIdentity(initializingLock, existingStat)
         ) {
           initializingLock = {
             deadline: now + INSTALL_LOCK_INITIALIZATION_TIMEOUT_MS,
