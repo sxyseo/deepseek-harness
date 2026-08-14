@@ -30,6 +30,8 @@ DeepSeek Harness 的多引擎游戏运行时能力 seam（`ctx.gameRuntimes`）�
 | `process(processId)` | 已跟踪的进程记录，或 `undefined`。 |
 | `readLog({ processId, engine? })` | 读取已跟踪进程的引擎日志；已退出进程的最终崩溃日志仍可读。 |
 | `stop(processId)` | 终止一个已跟踪进程树（幂等）；其记录保留以便最后一次读日志。 |
+| `queryScene({ project, scenePath?, engine? })` | 经选定引擎查询一个场景树快照。 |
+| `queryAsset({ project, assetPath, engine? })` | 查询一个项目资产的元数据；缺失资产以 `exists: false` 返回。 |
 
 ### 生命周期
 
@@ -37,27 +39,30 @@ DeepSeek Harness 的多引擎游戏运行时能力 seam（`ctx.gameRuntimes`）�
 
 ## EngineRuntime
 
-Provider 需要实现的抽象后端契约；它本身不是 Cordis service —— 注册表拥有其生命周期。`start` 是异步的，因为 provider 必须在 spawn 前解析引擎可执行文件。`captureFrame` / `queryScene` / `sendInput` 是 M2–M4 的观察/输入表面；尚未实现某能力的 provider 必须抛出 `GameError` `GAME_CAPABILITY_UNAVAILABLE`，而不是伪造结果。
+Provider 需要实现的抽象后端契约；它本身不是 Cordis service —— 注册表拥有其生命周期。`start` 是异步的，因为 provider 必须在 spawn 前解析引擎可执行文件。`captureFrame` / `sendInput` 是 M3–M4 的观察/输入表面；尚未实现某能力的 provider 必须抛出 `GameError` `GAME_CAPABILITY_UNAVAILABLE`，而不是伪造结果。
 
 ```ts
 export abstract class EngineRuntime {
   abstract resolve(request: GameRunRequest): GameRunSpec
   abstract resolveBuild(request: GameBuildRequest): GameBuildSpec
+  abstract resolveSceneQuery(request: SceneQueryRequest): SceneQuerySpec
+  abstract resolveAssetQuery(request: AssetQueryRequest): AssetQuerySpec
   abstract build(spec: GameBuildSpec): Promise<GameBuildResult>
   abstract start(spec: GameRunSpec): Promise<GameProcess>
   abstract captureFrame(spec: CaptureSpec): Promise<GameFrame>
   abstract queryScene(spec: SceneQuerySpec): Promise<SceneInfo>
+  abstract queryAsset(spec: AssetQuerySpec): Promise<AssetInfo>
   abstract sendInput(spec: InputSpec): Promise<InputResult>
 }
 ```
 
 ## Errors
 
-`GameError` 继承 `HarnessError`，带机器可路由的 code。共享 code：`GAME_DUPLICATE_RUNTIME`、`GAME_ENGINE_UNKNOWN`、`GAME_ENGINE_AMBIGUOUS`、`GAME_ENGINE_UNAVAILABLE`、`GAME_INVALID_REQUEST`、`GAME_EXECUTABLE_MISSING`、`GAME_PROCESS_UNKNOWN`、`GAME_CAPABILITY_UNAVAILABLE`。Provider 可添加自有 code；consumer 必须容忍它们。
+`GameError` 继承 `HarnessError`，带机器可路由的 code。共享 code：`GAME_DUPLICATE_RUNTIME`、`GAME_ENGINE_UNKNOWN`、`GAME_ENGINE_AMBIGUOUS`、`GAME_ENGINE_UNAVAILABLE`、`GAME_INVALID_REQUEST`、`GAME_EXECUTABLE_MISSING`、`GAME_PROCESS_UNKNOWN`、`GAME_CAPABILITY_UNAVAILABLE`、`GAME_QUERY_FAILED`。Provider 可添加自有 code；consumer 必须容忍它们。
 
 ## Model Experience
 
-间接，经由模型可见的游戏工具（`dsh-tool-game`），它们拥有构建、运行与引擎日志的全部模型可见渲染；注册表自身不注册任何 prompt、schema 或结果文本。
+间接，经由模型可见的游戏工具（`dsh-tool-game`），它们拥有构建、运行、引擎日志与场景/资产查询的全部模型可见渲染；注册表自身不注册任何 prompt、schema 或结果文本。
 
 #### KV Cache effect
 
@@ -65,6 +70,7 @@ export abstract class EngineRuntime {
 
 ## Known Limitations and Deferred Work
 
-- **帧捕获、场景查询与输入投递已声明但未实现** — `captureFrame` / `queryScene` / `sendInput` 存在于 seam 上以便 provider 逐步长入；尚无 Godot 实现或模型可见工具（M2–M4 里程碑）。尚不存在的工具：`game_query_scene`、`game_query_asset`、`game_capture_frame`、`game_send_input`。
+- **帧捕获与输入投递已声明但未实现** — `captureFrame` / `sendInput` 存在于 seam 上以便 provider 逐步长入；尚无 Godot 实现或模型可见工具（M3–M4 里程碑）。尚不存在的工具：`game_capture_frame`、`game_send_input`。
 - **没有面向模型的停止工具** — 已启动的进程一直运行到会话/注册表销毁或后端将其终止；`registry.stop()` 仅是宿主 API。`game_stop` 工具推迟到试玩里程碑。
-- **引擎可用性是部署方的职责** — seam 通过 `ctx.subprocess` 解析可执行文件；未安装引擎二进制的部署在每次构建/运行时以 `GAME_EXECUTABLE_MISSING` 失败。
+- **资产查询由 provider 定义** — seam 规范化了种类与结构（`tscn` 骨架、`script` 头），但提取机制是每个 provider 自己文档化的选择；对特殊资产，各 provider 能报告的内容可能不同。
+- **引擎可用性是部署方的职责** — seam 通过 `ctx.subprocess` 解析可执行文件；未安装引擎二进制的部署在每次构建/运行/查询时以 `GAME_EXECUTABLE_MISSING` 失败。

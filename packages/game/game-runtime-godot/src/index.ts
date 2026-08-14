@@ -2,20 +2,28 @@
  * Service Provider for the game runtime seam: the Godot engine backend
  * (`@deepseek-ai/dsh-game-runtime`). A facade over the Godot CLI spawned
  * through `ctx.subprocess` — the provider forks no Godot code; it drives the
- * editor/runtime binary in headless mode for builds (import/export) and runs.
+ * editor/runtime binary in headless mode for builds (import/export), runs, and
+ * scene queries (a `--script` probe), and classifies/parses project assets
+ * with documented text heuristics.
  *
- * Frame capture, scene queries, and input delivery are declared by the seam
- * but land in later milestones: those methods throw `GAME_CAPABILITY_UNAVAILABLE`
- * rather than fake a result.
+ * Frame capture and input delivery are declared by the seam but land in later
+ * milestones: those methods throw `GAME_CAPABILITY_UNAVAILABLE` rather than
+ * fake a result.
  * @module @deepseek-ai/dsh-game-runtime-godot
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { readFileSync, statSync } from 'node:fs'
+import { isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type {
+  AssetInfo,
+  AssetQueryRequest,
+  AssetQuerySpec,
+  CaptureRequest,
   CaptureSpec,
+  GameAssetKind,
   GameBuildRequest,
   GameBuildResult,
   GameBuildSpec,
@@ -29,7 +37,12 @@ import type {
   InputResult,
   InputSpec,
   SceneInfo,
+  SceneNode,
+  SceneQueryRequest,
   SceneQuerySpec,
+  ScriptHeader,
+  TscnNodeEntry,
+  TscnSkeleton,
 } from '@deepseek-ai/dsh-game-runtime'
 import { EngineRuntime, GameError, newGameProcessId } from '@deepseek-ai/dsh-game-runtime'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -187,12 +200,39 @@ export class GodotRuntime extends EngineRuntime {
     }
   }
 
+  override resolveSceneQuery(request: SceneQueryRequest): SceneQuerySpec {
+    const projectPath = resolveProject(request.project)
+    return {
+      projectPath,
+      ...request.scenePath !== undefined ? { scenePath: request.scenePath } : {},
+    }
+  }
+
+  override resolveAssetQuery(request: AssetQueryRequest): AssetQuerySpec {
+    const projectPath = resolveProject(request.project)
+    return { projectPath, assetPath: normalizeAssetPath(request.assetPath) }
+  }
+
+  override resolveCapture(request: CaptureRequest): CaptureSpec {
+    const projectPath = resolveProject(request.project)
+    if (request.outputPath.trim() === '') {
+      throw new GameError('godot: the capture output path must be a non-empty string', 'GAME_INVALID_REQUEST')
+    }
+    return {
+      projectPath,
+      outputPath: request.outputPath,
+      ...request.scenePath !== undefined ? { scenePath: request.scenePath } : {},
+      ...request.width !== undefined ? { width: request.width } : {},
+      ...request.height !== undefined ? { height: request.height } : {},
+    }
+  }
+
   override async build(spec: GameBuildSpec): Promise<GameBuildResult> {
     const program = spec.argv[0]
     if (program === undefined) {
       throw new GameError('godot build spec carries an empty argv', 'GAME_INVALID_REQUEST')
     }
-    const executable = await this.resolveExecutable(program, spec)
+    const executable = await this.resolveExecutable(program, spec.env)
     const handle = this.ctx.subprocess.spawn(this.spawnSpec(spec, executable))
     const outcome = await handle.done
     const log = readCollectedLog(handle, this.maxLogBytes)
@@ -210,27 +250,121 @@ export class GodotRuntime extends EngineRuntime {
     if (program === undefined) {
       throw new GameError('godot run spec carries an empty argv', 'GAME_INVALID_REQUEST')
     }
-    const executable = await this.resolveExecutable(program, spec)
+    const executable = await this.resolveExecutable(program, spec.env)
     const handle = this.ctx.subprocess.spawn(this.spawnSpec(spec, executable))
     return new GodotProcess(this.engine, handle, this.maxLogBytes)
   }
 
-  override async captureFrame(_spec: CaptureSpec): Promise<GameFrame> {
-    throw new GameError('the godot backend has not implemented frame capture yet (M3 observation seam)', 'GAME_CAPABILITY_UNAVAILABLE')
+  override async captureFrame(spec: CaptureSpec): Promise<GameFrame> {
+    const probePath = fileURLToPath(new URL('../assets/capture-frame.gd', import.meta.url))
+    const program = this.executable
+    const argv = [
+      program, ...this.argvPrefix, '--headless', '--path', spec.projectPath,
+      '--script', probePath, '--', spec.outputPath,
+      ...(spec.scenePath !== undefined ? [spec.scenePath] : []),
+      ...(spec.width !== undefined ? [String(spec.width)] : []),
+      ...(spec.height !== undefined ? [String(spec.height)] : []),
+    ]
+    const executable = await this.resolveExecutable(program)
+    const handle = this.ctx.subprocess.spawn({
+      argv: [executable, ...argv.slice(1)],
+      cwd: spec.projectPath,
+      stdio: {
+        stdin: 'ignore',
+        stdout: { maxBytes: this.maxLogBytes },
+        stderr: { maxBytes: this.maxLogBytes },
+      },
+      graceMs: this.graceMs,
+      ...spec.env !== undefined ? { env: spec.env } : {},
+    })
+    const outcome = await handle.done
+    const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
+    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    const resultLine = stdout.split(/\r?\n/).map(line => line.trim()).find(line => line.startsWith('CAPTURE_RESULT '))
+    if (resultLine === undefined) {
+      const detail = stderr.trim() || stdout.trim() || 'no probe output'
+      throw new GameError(`godot frame capture failed (exit ${String(outcome.exitCode)}): ${detail}`, 'GAME_CAPTURE_FAILED')
+    }
+    try {
+      const payload = JSON.parse(resultLine.slice('CAPTURE_RESULT '.length)) as { imagePath?: unknown; width?: unknown; height?: unknown }
+      if (typeof payload.imagePath !== 'string' || typeof payload.width !== 'number' || typeof payload.height !== 'number') {
+        throw new GameError('godot frame capture returned a malformed payload', 'GAME_CAPTURE_FAILED')
+      }
+      return { imagePath: payload.imagePath, width: payload.width, height: payload.height }
+    } catch (error: unknown) {
+      if (error instanceof GameError) throw error
+      throw new GameError('godot frame capture returned an unparsable payload', 'GAME_CAPTURE_FAILED', { cause: error })
+    }
   }
 
-  override async queryScene(_spec: SceneQuerySpec): Promise<SceneInfo> {
-    throw new GameError('the godot backend has not implemented scene queries yet (M2 refactor seam)', 'GAME_CAPABILITY_UNAVAILABLE')
+  override async queryScene(spec: SceneQuerySpec): Promise<SceneInfo> {
+    const probePath = fileURLToPath(new URL('../assets/scene-query.gd', import.meta.url))
+    const program = this.executable
+    const argv = [
+      program, ...this.argvPrefix, '--headless', '--path', spec.projectPath,
+      '--script', probePath, '--', ...(spec.scenePath !== undefined ? [spec.scenePath] : []),
+    ]
+    const executable = await this.resolveExecutable(program)
+    const handle = this.ctx.subprocess.spawn({
+      argv: [executable, ...argv.slice(1)],
+      cwd: spec.projectPath,
+      stdio: {
+        stdin: 'ignore',
+        stdout: { maxBytes: this.maxLogBytes },
+        stderr: { maxBytes: this.maxLogBytes },
+      },
+      graceMs: this.graceMs,
+      ...spec.env !== undefined ? { env: spec.env } : {},
+    })
+    const outcome = await handle.done
+    const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
+    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    const resultLine = stdout.split(/\r?\n/).map(line => line.trim()).find(line => line.startsWith('SCENE_QUERY_RESULT '))
+    if (resultLine === undefined) {
+      const detail = stderr.trim() || stdout.trim() || 'no probe output'
+      throw new GameError(`godot scene query failed (exit ${String(outcome.exitCode)}): ${detail}`, 'GAME_QUERY_FAILED')
+    }
+    try {
+      const payload = JSON.parse(resultLine.slice('SCENE_QUERY_RESULT '.length)) as { scenePath?: unknown; root?: unknown }
+      const root = parseSceneNode(payload.root)
+      if (typeof payload.scenePath !== 'string' || root === undefined) {
+        throw new GameError('godot scene query returned a malformed payload', 'GAME_QUERY_FAILED')
+      }
+      return { scenePath: payload.scenePath, root }
+    } catch (error: unknown) {
+      if (error instanceof GameError) throw error
+      throw new GameError('godot scene query returned an unparsable payload', 'GAME_QUERY_FAILED', { cause: error })
+    }
   }
 
+  // oxlint-disable-next-line typescript/require-await -- filesystem reads are synchronous; async satisfies the seam's Promise contract.
+  override async queryAsset(spec: AssetQuerySpec): Promise<AssetInfo> {
+    const absolute = join(spec.projectPath, spec.assetPath)
+    const info = statSync(absolute, { throwIfNoEntry: false })
+    const kind = classifyAssetKind(spec.assetPath)
+    if (info === undefined || !info.isFile()) {
+      return { assetPath: spec.assetPath, exists: false, kind }
+    }
+    const content = readFileSync(absolute, 'utf8')
+    return {
+      assetPath: spec.assetPath,
+      exists: true,
+      kind,
+      bytes: info.size,
+      ...kind === 'scene' ? { tscn: parseTscnSkeleton(content) } : {},
+      ...kind === 'script' ? { script: parseScriptHeader(content) } : {},
+    }
+  }
+
+  // oxlint-disable-next-line typescript/require-await -- async stub shape: the M4 implementation awaits input delivery.
   override async sendInput(_spec: InputSpec): Promise<InputResult> {
     throw new GameError('the godot backend has not implemented input delivery yet (M4 playtest seam)', 'GAME_CAPABILITY_UNAVAILABLE')
   }
 
   /** Resolve the engine executable in the subprocess seam's execution world. */
-  private async resolveExecutable(program: string, spec: GameRunSpec | GameBuildSpec): Promise<string> {
+  private async resolveExecutable(program: string, env?: Readonly<Record<string, string>>): Promise<string> {
     try {
-      return await this.ctx.subprocess.resolveExecutable(program, spec.env)
+      return await this.ctx.subprocess.resolveExecutable(program, env)
     } catch (error: unknown) {
       throw new GameError(`cannot resolve the godot executable ${JSON.stringify(program)}`, 'GAME_EXECUTABLE_MISSING', { cause: error })
     }
@@ -275,6 +409,103 @@ function readCollectedLog(handle: SubprocessHandle, maxLogBytes: number): GameLo
   if (stderr?.text !== undefined && stderr.text !== '') parts.push(stderr.text)
   const text = parts.join('\n')
   return { text: text.slice(-maxLogBytes), truncated: (stdout?.lossy ?? false) || (stderr?.lossy ?? false) || text.length > maxLogBytes }
+}
+
+/**
+ * Normalize one asset path to a project-relative form: an optional `res://`
+ * prefix is stripped, and absolute, escaping (`..`), or backslash-separated
+ * paths are rejected — asset reads must stay inside the project.
+ */
+function normalizeAssetPath(assetPath: string): string {
+  if (assetPath.trim() === '') {
+    throw new GameError('godot: the asset path must be a non-empty string', 'GAME_INVALID_REQUEST')
+  }
+  const normalized = assetPath.replace(/^res:\/\//, '')
+  if (isAbsolute(normalized) || normalized.includes('\\') || normalized.split('/').includes('..')) {
+    throw new GameError(
+      `godot: the asset path ${JSON.stringify(assetPath)} must be project-relative (res:// or relative), never absolute or escaping`,
+      'GAME_INVALID_REQUEST',
+    )
+  }
+  return normalized
+}
+
+const SCENE_EXTENSIONS = new Set(['tscn', 'scn'])
+const SCRIPT_EXTENSIONS = new Set(['gd'])
+const TEXTURE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'svg', 'bmp', 'ktx', 'dds', 'exr', 'hdr', 'tga'])
+const AUDIO_EXTENSIONS = new Set(['ogg', 'wav', 'mp3', 'flac'])
+const FONT_EXTENSIONS = new Set(['ttf', 'otf', 'woff', 'woff2'])
+const SHADER_EXTENSIONS = new Set(['gdshader'])
+const CONFIG_EXTENSIONS = new Set(['godot', 'cfg'])
+
+/** Classify one asset path by extension into the shared kind vocabulary. */
+function classifyAssetKind(assetPath: string): GameAssetKind {
+  const dot = assetPath.lastIndexOf('.')
+  const extension = dot === -1 ? '' : assetPath.slice(dot + 1).toLowerCase()
+  if (SCENE_EXTENSIONS.has(extension)) return 'scene'
+  if (SCRIPT_EXTENSIONS.has(extension)) return 'script'
+  if (TEXTURE_EXTENSIONS.has(extension)) return 'texture'
+  if (AUDIO_EXTENSIONS.has(extension)) return 'audio'
+  if (FONT_EXTENSIONS.has(extension)) return 'font'
+  if (SHADER_EXTENSIONS.has(extension)) return 'shader'
+  if (CONFIG_EXTENSIONS.has(extension)) return 'config'
+  return 'other'
+}
+
+/** Godot 4 `.tscn` node declaration: `[node name="X" type="Y" parent="Z"]` (root parent is `"."`). */
+const TSCN_NODE_LINE = /^\[node\s+name="([^"]*)"\s+type="([^"]*)"(?:\s+parent="([^"]*)")?/
+
+/**
+ * Parse the declared node skeleton of a `.tscn` file (text-level heuristic over
+ * Godot's node declarations — it reports what is DECLARED, not what the engine
+ * would instantiate; inherited scenes are not expanded).
+ * @returns the skeleton, or `undefined` when no root node is declared.
+ */
+function parseTscnSkeleton(content: string): TscnSkeleton | undefined {
+  const nodes: TscnNodeEntry[] = []
+  let root: string | undefined
+  for (const line of content.split(/\r?\n/)) {
+    const match = TSCN_NODE_LINE.exec(line)
+    if (match === null) continue
+    const name = match[1] ?? ''
+    const type = match[2] ?? ''
+    const parent = match[3] ?? '.'
+    nodes.push({ name, type, parent })
+    if (parent === '.') root = name
+  }
+  if (root === undefined) return undefined
+  return { root, nodes }
+}
+
+/**
+ * Parse the declared header of a GDScript file (text-level heuristic):
+ * `extends`, `class_name`, and the `@tool` annotation.
+ */
+function parseScriptHeader(content: string): ScriptHeader {
+  const extendsMatch = /^extends\s+(\S+)/m.exec(content)
+  const classMatch = /^class_name\s+(\S+)/m.exec(content)
+  const tool = /^@tool\b/m.test(content)
+  return {
+    ...extendsMatch?.[1] !== undefined ? { extends: extendsMatch[1] } : {},
+    ...classMatch?.[1] !== undefined ? { className: classMatch[1] } : {},
+    tool,
+  }
+}
+
+/** Validate one probe-emitted node subtree into the shared {@link SceneNode} shape. */
+function parseSceneNode(value: unknown): SceneNode | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Record<string, unknown>
+  if (typeof raw.path !== 'string' || typeof raw.type !== 'string' || typeof raw.name !== 'string' || !Array.isArray(raw.children)) {
+    return undefined
+  }
+  const children: SceneNode[] = []
+  for (const child of raw.children) {
+    const parsed = parseSceneNode(child)
+    if (parsed === undefined) return undefined
+    children.push(parsed)
+  }
+  return { path: raw.path, type: raw.type, name: raw.name, children }
 }
 
 /**

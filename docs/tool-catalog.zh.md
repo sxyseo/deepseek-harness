@@ -41,7 +41,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-tool-game` | `game_build`、`game_read_log`、`game_run` | `ctx.tools`、`ctx.gameRuntimes` | `tool/call`、`tool/result` | - | game_build、game_run 和 game_read_log 将引擎选择置于 ctx.gameRuntimes 之后，使模型可见 schema 在更换引擎后端（Godot、Unity、Unreal……）时保持稳定。 |
+| `@deepseek-ai/dsh-tool-game` | `game_build`、`game_query_asset`、`game_query_scene`、`game_read_log`、`game_run` | `ctx.tools`、`ctx.gameRuntimes` | `tool/call`、`tool/result` | - | game_build、game_run 和 game_read_log 将引擎选择置于 ctx.gameRuntimes 之后，使模型可见 schema 在更换引擎后端（Godot、Unity、Unreal……）时保持稳定。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -1912,6 +1912,65 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
       "items": {
         "type": "string"
       }
+    }
+  },
+  "required": [
+    "project"
+  ]
+}
+```
+
+来源：[`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_query_asset`
+
+查询单个项目资产：是否存在、派生类型、大小，以及（.tscn 场景和 GDScript 文件的）已声明节点骨架或脚本头。在使用文件系统工具编辑文件之前，为重构循环提供信息。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "assetPath": {
+      "type": "string",
+      "description": "Project-relative asset path (e.g. res://main.tscn, player/player.gd); absolute or escaping paths are rejected."
+    }
+  },
+  "required": [
+    "project",
+    "assetPath"
+  ]
+}
+```
+
+来源：[`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_query_scene`
+
+查询游戏引擎场景的节点树（省略 scenePath 时查询主场景）。返回每个节点的路径、引擎类型和名称——引擎报告的已声明或实时结构——以引导 .tscn/脚本重构。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "scenePath": {
+      "type": "string",
+      "description": "Scene resource path to query (e.g. res://main.tscn). Omitted = the project main scene."
     }
   },
   "required": [

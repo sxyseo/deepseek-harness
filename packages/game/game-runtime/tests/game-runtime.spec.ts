@@ -4,6 +4,9 @@ import GameRuntimeRegistry, {
   EngineRuntime,
   GameError,
   MAX_RETAINED_EXITED_PROCESSES,
+  type AssetInfo,
+  type AssetQueryRequest,
+  type AssetQuerySpec,
   type GameBuildRequest,
   type GameBuildSpec,
   type GameFrame,
@@ -15,8 +18,10 @@ import GameRuntimeRegistry, {
   type GameRunSpec,
   type InputResult,
   type InputSpec,
+  type CaptureRequest,
   type CaptureSpec,
   type SceneInfo,
+  type SceneQueryRequest,
   type SceneQuerySpec,
 } from '@deepseek-ai/dsh-game-runtime'
 
@@ -93,12 +98,34 @@ class FakeRuntime extends EngineRuntime {
     return record.process
   }
 
-  override async captureFrame(_spec: CaptureSpec): Promise<GameFrame> {
-    throw new GameError(`engine "${this.engine}" has not implemented frame capture yet`, 'GAME_CAPABILITY_UNAVAILABLE')
+  override async captureFrame(spec: CaptureSpec): Promise<GameFrame> {
+    return { imagePath: spec.outputPath, width: 64, height: 48 }
   }
 
-  override async queryScene(_spec: SceneQuerySpec): Promise<SceneInfo> {
-    throw new GameError(`engine "${this.engine}" has not implemented scene queries yet`, 'GAME_CAPABILITY_UNAVAILABLE')
+  override resolveSceneQuery(request: SceneQueryRequest): SceneQuerySpec {
+    return {
+      projectPath: request.project,
+      ...request.scenePath !== undefined ? { scenePath: request.scenePath } : {},
+    }
+  }
+
+  override resolveAssetQuery(request: AssetQueryRequest): AssetQuerySpec {
+    return { projectPath: request.project, assetPath: request.assetPath }
+  }
+
+  override resolveCapture(request: CaptureRequest): CaptureSpec {
+    return { projectPath: request.project, outputPath: request.outputPath }
+  }
+
+  override async queryScene(spec: SceneQuerySpec): Promise<SceneInfo> {
+    return {
+      scenePath: spec.scenePath ?? 'res://main.tscn',
+      root: { path: 'Main', type: 'Node2D', name: 'Main', children: [] },
+    }
+  }
+
+  override async queryAsset(spec: AssetQuerySpec): Promise<AssetInfo> {
+    return { assetPath: spec.assetPath, exists: false, kind: 'other' }
   }
 
   override async sendInput(_spec: InputSpec): Promise<InputResult> {
@@ -184,6 +211,37 @@ describe('GameRuntimeRegistry engine resolution', () => {
     registry.register('godot', new FakeRuntime('godot'))
     registry.register('unity', new FakeRuntime('unity'))
     await expect(registry.build({ engine: 'godot', project: 'p' })).resolves.toMatchObject({ engine: 'godot' })
+  })
+})
+
+describe('GameRuntimeRegistry query routing', () => {
+  it('routes scene queries through the selected engine', async () => {
+    const { registry } = await mount()
+    registry.register('godot', new FakeRuntime('godot'))
+    const info = await registry.queryScene({ project: 'p', scenePath: 'res://level.tscn' })
+    expect(info).toMatchObject({ scenePath: 'res://level.tscn' })
+    expect(info.root).toMatchObject({ name: 'Main', type: 'Node2D' })
+  })
+
+  it('routes asset queries through the selected engine', async () => {
+    const { registry } = await mount()
+    registry.register('godot', new FakeRuntime('godot'))
+    const info = await registry.queryAsset({ project: 'p', assetPath: 'res://main.tscn' })
+    expect(info).toMatchObject({ assetPath: 'res://main.tscn', exists: false, kind: 'other' })
+  })
+
+  it('routes frame captures through the selected engine', async () => {
+    const { registry } = await mount()
+    registry.register('godot', new FakeRuntime('godot'))
+    const frame = await registry.captureFrame({ project: 'p', outputPath: 'frame.png' })
+    expect(frame).toMatchObject({ imagePath: 'frame.png', width: 64, height: 48 })
+  })
+
+  it('applies engine resolution errors to queries', async () => {
+    const { registry } = await mount()
+    registry.register('godot', new FakeRuntime('godot'))
+    await expect(registry.queryScene({ engine: 'unity', project: 'p' })).rejects.toThrow(expect.objectContaining({ code: 'GAME_ENGINE_UNKNOWN' }))
+    await expect(registry.queryAsset({ project: 'p', assetPath: 'x.tscn' })).resolves.toBeDefined()
   })
 })
 

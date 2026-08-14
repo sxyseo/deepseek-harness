@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -146,15 +146,142 @@ describe('GodotRuntime live processes', () => {
     }
   })
 
-  it('declares the not-yet-implemented observation/input capabilities honestly', async () => {
+  it('declares the not-yet-implemented input capability honestly', async () => {
     const { runtime, project } = await mount()
-    await expect(runtime.captureFrame({ projectPath: project, outputPath: 'o.png' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'GAME_CAPABILITY_UNAVAILABLE' }))
-    await expect(runtime.queryScene({ projectPath: project }))
-      .rejects.toThrow(expect.objectContaining({ code: 'GAME_CAPABILITY_UNAVAILABLE' }))
     await expect(runtime.sendInput({ processId: 'game-x', action: 'key_press' }))
       .rejects.toThrow(expect.objectContaining({ code: 'GAME_CAPABILITY_UNAVAILABLE' }))
     await rm(project, { recursive: true, force: true })
+  })
+})
+
+describe('GodotRuntime scene queries through the subprocess seam', () => {
+  it('runs the probe and parses the node tree', async () => {
+    const { ctx, runtime, project } = await mount(shimConfig)
+    try {
+      const info = await runtime.queryScene(runtime.resolveSceneQuery({ project, scenePath: 'res://main.tscn' }))
+      expect(info.scenePath).toBe('res://main.tscn')
+      expect(info.root).toMatchObject({ name: 'Main', type: 'Node2D' })
+      expect(info.root.children.map(child => child.name)).toEqual(['Player', 'World'])
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it('fails loud when the probe reports an engine-side error', async () => {
+    const { ctx, runtime, project } = await mount(shimConfig)
+    try {
+      const env = { SHIM_SCENE_FAIL: '1' }
+      const spec = { ...runtime.resolveSceneQuery({ project, scenePath: 'res://broken.tscn' }), env }
+      await expect(runtime.queryScene(spec)).rejects.toThrow(expect.objectContaining({ code: 'GAME_QUERY_FAILED' }))
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('GodotRuntime asset queries', () => {
+  it('classifies and parses a .tscn skeleton', async () => {
+    const { ctx, runtime, project } = await mount()
+    try {
+      await writeFile(join(project, 'main.tscn'), [
+        '[gd_scene load_steps=2 format=3]',
+        '',
+        '[node name="Main" type="Node2D"]',
+        '[node name="Player" type="CharacterBody2D" parent="Main"]',
+        '[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]',
+        '',
+      ].join('\n'))
+      const info = await runtime.queryAsset(runtime.resolveAssetQuery({ project, assetPath: 'res://main.tscn' }))
+      expect(info).toMatchObject({ assetPath: 'main.tscn', exists: true, kind: 'scene' })
+      expect(info.bytes).toBeGreaterThan(0)
+      expect(info.tscn?.root).toBe('Main')
+      expect(info.tscn?.nodes).toHaveLength(3)
+      expect(info.tscn?.nodes[2]).toEqual({ name: 'CollisionShape2D', type: 'CollisionShape2D', parent: 'Player' })
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it('classifies and parses a GDScript header', async () => {
+    const { ctx, runtime, project } = await mount()
+    try {
+      await writeFile(join(project, 'player.gd'), [
+        '@tool',
+        'class_name PlayerController',
+        'extends CharacterBody2D',
+        '',
+      ].join('\n'))
+      const info = await runtime.queryAsset(runtime.resolveAssetQuery({ project, assetPath: 'player.gd' }))
+      expect(info).toMatchObject({ assetPath: 'player.gd', exists: true, kind: 'script' })
+      expect(info.script).toEqual({ extends: 'CharacterBody2D', className: 'PlayerController', tool: true })
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a missing asset with exists: false, not a rejection', async () => {
+    const { ctx, runtime, project } = await mount()
+    try {
+      const info = await runtime.queryAsset(runtime.resolveAssetQuery({ project, assetPath: 'missing.png' }))
+      expect(info).toMatchObject({ assetPath: 'missing.png', exists: false, kind: 'texture' })
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects absolute or escaping asset paths', async () => {
+    const { ctx, runtime, project } = await mount()
+    try {
+      expect(() => runtime.resolveAssetQuery({ project, assetPath: join(project, 'main.tscn') }))
+        .toThrow(expect.objectContaining({ code: 'GAME_INVALID_REQUEST' }))
+      expect(() => runtime.resolveAssetQuery({ project, assetPath: '../outside.tscn' }))
+        .toThrow(expect.objectContaining({ code: 'GAME_INVALID_REQUEST' }))
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('GodotRuntime frame captures through the subprocess seam', () => {
+  it('runs the capture probe, writes a PNG, and reports its size', async () => {
+    const { ctx, runtime, project } = await mount(shimConfig)
+    try {
+      const outputPath = join(project, 'frame.png')
+      const frame = await runtime.captureFrame(runtime.resolveCapture({ project, outputPath, scenePath: 'res://main.tscn' }))
+      expect(frame).toMatchObject({ imagePath: outputPath, width: 1, height: 1 })
+      const bytes = await readFile(outputPath)
+      expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it('fails loud when the probe reports an engine-side error', async () => {
+    const { ctx, runtime, project } = await mount(shimConfig)
+    try {
+      const spec = { ...runtime.resolveCapture({ project, outputPath: join(project, 'frame.png') }), env: { SHIM_CAPTURE_FAIL: '1' } }
+      await expect(runtime.captureFrame(spec)).rejects.toThrow(expect.objectContaining({ code: 'GAME_CAPTURE_FAILED' }))
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an empty capture output path', async () => {
+    const { ctx, runtime, project } = await mount()
+    try {
+      expect(() => runtime.resolveCapture({ project, outputPath: '  ' })).toThrow(expect.objectContaining({ code: 'GAME_INVALID_REQUEST' }))
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(project, { recursive: true, force: true })
+    }
   })
 })
 

@@ -23,11 +23,13 @@ Operational overrides feed these same fields from the composition, not a hidden 
 
 - **Run**: `godot --headless --path <project> [args...]` — starts the project's main scene; the process keeps running until terminated.
 - **Build**: `godot --headless --path <project> --import`, followed by `--export-release <preset> <output>` when `exportPreset` is set (default output `<project>/dist/<preset>`).
+- **Scene query**: `godot --headless --path <project> --script <probe> -- [scenePath]` — the shipped `assets/scene-query.gd` probe instantiates the scene and prints its node tree as a `SCENE_QUERY_RESULT <json>` stdout line. Engine-side failures (unloadable scene, malformed payload) surface as `GAME_QUERY_FAILED` with the probe's stderr.
+- **Asset query**: filesystem-backed, no engine spawn — existence/size, an extension-derived `kind`, a declared node skeleton parsed from `.tscn` node lines, and a `extends`/`class_name`/`@tool` header parsed from GDScript text. These are documented text heuristics over the DECLARED file content, not engine semantics (inherited scenes are not expanded).
 - The project path must name an existing directory (`GAME_INVALID_REQUEST` otherwise). A non-zero engine exit is a build RESULT (`ok: false`), not a rejection.
 
 ## Model Experience
 
-Indirectly, through the model-facing game tools (`dsh-tool-game`), which render this backend's builds, runs, and engine logs; the provider registers no prompt, schema, or result text of its own.
+Indirectly, through the model-facing game tools (`dsh-tool-game`), which render this backend's builds, runs, engine logs, and scene/asset queries; the provider registers no prompt, schema, or result text of its own.
 
 #### KV Cache effect
 
@@ -35,7 +37,10 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
-- **Frame capture, scene queries, and input delivery are not implemented** — the three observation/input methods throw `GAME_CAPABILITY_UNAVAILABLE`; they land with the M2–M4 milestones (scene queries and captures via a `--script` probe, input via a running bridge).
+- **Frame capture and input delivery are not implemented** — `captureFrame` / `sendInput` throw `GAME_CAPABILITY_UNAVAILABLE`; they land with the M3–M4 milestones.
+- **Scene queries need a real Godot** — the probe runs through the engine binary; without an installed Godot (or an `argvPrefix` wrapper) scene queries fail with `GAME_EXECUTABLE_MISSING`.
+- **Scene probes instantiate, not evaluate** — the probe reports the node tree of the INSTANTIATED scene without running frames, so runtime-added children are invisible; for the DECLARED structure of a `.tscn` use `game_query_asset`.
+- **Asset queries are text heuristics** — node/script parsing reads the file as text; exotic `.tscn` attribute orders or script syntax may parse partially.
 - **Headless only** — the backend never opens a GUI window or a real viewport; visual capture must use Godot's headless rendering paths.
-- **No project.godot validation** — the backend checks the directory exists, not that it contains a valid Godot project; the engine's own error surfaces in the build/run log.
+- **No project.godot validation** — the backend checks the directory exists, not that it contains a valid Godot project; the engine's own error surfaces in the build/run/query output.
 - **Export presets must pre-exist** — `exportPreset` must name a preset from the project's `export_presets.cfg`; the backend does not author presets.

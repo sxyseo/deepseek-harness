@@ -19,6 +19,9 @@ const PROJECT = 'game-project'
 let runningProcessId: string | undefined
 /** How many game_read_log retries the turn has made. */
 let readAttempts = 0
+/** Facts recovered from the query tools for the final answer. */
+let sceneRootType = 'unknown'
+let assetKind = 'other'
 
 interface PriorTool {
   name: string
@@ -76,8 +79,8 @@ async function* finalAnswer(reply: string): AsyncIterable<StreamChunk> {
 
 /**
  * Keyless game-agent adapter: one real game_build/game_run/game_read_log chain
- * followed by a final answer. Like a real model, it retries game_read_log
- * until the engine's startup line appears (bounded), then reports the log.
+ * (with bounded log polling) followed by the M2 refactor loop — scene query,
+ * asset query, filesystem read, filesystem edit — and a final answer.
  */
 class CliMockAdapter extends LlmAdapter {
   override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -123,7 +126,32 @@ class CliMockAdapter extends LlmAdapter {
         yield * toolCall(`game-smoke-log-${readAttempts}`, 'game_read_log', { processId: runningProcessId ?? 'game-missing' }, { input: 12, output: 4 })
         return
       }
-      yield * finalAnswer(`GAME_AGENT_SMOKE_OK ${last.text.trim()}`)
+      // M2 refactor loop: inspect the scene tree next.
+      yield * toolCall('game-smoke-scene', 'game_query_scene', { project: PROJECT, scenePath: 'res://main.tscn' }, { input: 12, output: 4 })
+      return
+    }
+    if (last.name === 'game_query_scene') {
+      const match = /Main \(Node2D\)/.exec(last.text)
+      sceneRootType = match === null ? 'unknown' : 'Node2D'
+      yield * toolCall('game-smoke-asset', 'game_query_asset', { project: PROJECT, assetPath: 'res://main.tscn' }, { input: 12, output: 4 })
+      return
+    }
+    if (last.name === 'game_query_asset') {
+      assetKind = last.text.includes('is a scene') ? 'scene' : 'other'
+      // Observe the file first (fs-observation-policy), then modify it.
+      yield * toolCall('game-smoke-read', 'read', { file_path: 'game-project/main.tscn' }, { input: 11, output: 3 })
+      return
+    }
+    if (last.name === 'read') {
+      yield * toolCall('game-smoke-edit', 'edit', {
+        file_path: 'game-project/main.tscn',
+        old_string: '; DSH_M2_PRE_EDIT',
+        new_string: '; DSH_M2_EDIT_MARKER',
+      }, { input: 13, output: 5 })
+      return
+    }
+    if (last.name === 'edit') {
+      yield * finalAnswer(`GAME_AGENT_SMOKE_OK scene=${sceneRootType} asset=${assetKind} edit=done ${last.text.trim()}`)
     }
   }
 }

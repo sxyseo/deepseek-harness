@@ -1,11 +1,13 @@
 /**
  * Model-facing game tools over the game runtime capability seam
- * (`ctx.gameRuntimes`): `game_build`, `game_run`, and `game_read_log`. Each
- * tool carries an optional `engine` field resolved by the registry (an explicit
- * id wins; otherwise exactly one registered engine is required). The tools are
- * thin consumers — build/run execution, process tracking, and log reads live in
- * the seam, so every engine provider (Godot, Unity, Unreal, ...) is reachable
- * through the same three tools.
+ * (`ctx.gameRuntimes`): `game_build`, `game_run`, `game_read_log`,
+ * `game_query_scene`, and `game_query_asset`. Each tool carries an optional
+ * `engine` field resolved by the registry (an explicit id wins; otherwise
+ * exactly one registered engine is required). The tools are thin consumers —
+ * execution, process tracking, and queries live in the seam, so every engine
+ * provider (Godot, Unity, Unreal, ...) is reachable through the same tools.
+ * The query tools feed the refactor loop: inspect the scene tree and asset
+ * metadata, then modify `.tscn`/scripts with the ordinary filesystem tools.
  * @module @deepseek-ai/dsh-tool-game
  */
 
@@ -13,6 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 // Type-only: resolves ctx.gameRuntimes for this package's program.
 import { GameError } from '@deepseek-ai/dsh-game-runtime'
+import type { SceneNode } from '@deepseek-ai/dsh-game-runtime'
 
 export const name = 'tool-game'
 export const inject = ['tools', 'gameRuntimes']
@@ -21,6 +24,9 @@ export const inject = ['tools', 'gameRuntimes']
 export const GAME_BUILD_TOOL = 'game_build'
 export const GAME_RUN_TOOL = 'game_run'
 export const GAME_READ_LOG_TOOL = 'game_read_log'
+export const GAME_QUERY_SCENE_TOOL = 'game_query_scene'
+export const GAME_QUERY_ASSET_TOOL = 'game_query_asset'
+export const GAME_CAPTURE_FRAME_TOOL = 'game_capture_frame'
 
 /**
  * Register the three game tools on `ctx.tools`. Disposing the owning fiber
@@ -198,6 +204,7 @@ export function apply(ctx: Context): void {
           : `game_read_log: ${value.processId} (${value.engine}, ${value.state}):\n${value.log.text}`,
       }],
     },
+    // oxlint-disable-next-line typescript/require-await -- registry reads are synchronous; async satisfies the execute() Promise contract.
     async execute(args) {
       // readLog throws GAME_PROCESS_UNKNOWN for an unknown id, so a reached
       // process lookup below is always defined.
@@ -225,4 +232,180 @@ export function apply(ctx: Context): void {
       rawInput: { processId: args.processId },
     }),
   }))
+
+  ctx.tools.register(defineTool({
+    name: GAME_QUERY_SCENE_TOOL,
+    description: 'Query the node tree of a game engine scene (the main scene when scenePath is omitted). Returns every node with its path, engine type, and name — the declared or live structure the engine reports — to guide .tscn/script refactors.',
+    parameters: {
+      engine: {
+        type: 'string',
+        description: 'Engine id (e.g. "godot"). Omit when exactly one engine is registered.',
+      },
+      project: {
+        type: 'string',
+        required: true,
+        description: 'Path to the engine project directory (for Godot: the folder containing project.godot).',
+      },
+      scenePath: {
+        type: 'string',
+        description: 'Scene resource path to query (e.g. res://main.tscn). Omitted = the project main scene.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          scenePath: { type: 'string', required: true },
+          nodes: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                type: { type: 'string', required: true },
+                name: { type: 'string', required: true },
+              },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `game_query_scene: ${value.scenePath}\n${value.nodes.map((node: SceneEntry) => `${node.path} (${node.type})`).join('\n')}`,
+      }],
+    },
+    async execute(args, exec) {
+      const info = await ctx.gameRuntimes.queryScene({
+        ...args.engine !== undefined ? { engine: args.engine } : {},
+        project: args.project,
+        ...args.scenePath !== undefined ? { scenePath: args.scenePath } : {},
+      })
+      exec.signal.throwIfAborted()
+      const nodes: SceneEntry[] = []
+      flattenSceneNode(info.root, nodes)
+      return { scenePath: info.scenePath, nodes }
+    },
+    presentCall: args => ({
+      card: 'generic',
+      title: `Query scene ${args.scenePath ?? 'main'}`,
+      kind: 'read',
+      rawInput: { project: args.project, scenePath: args.scenePath ?? '' },
+    }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: GAME_QUERY_ASSET_TOOL,
+    description: 'Query one project asset: whether it exists, its derived kind, size, and — for .tscn scenes and GDScript files — the declared node skeleton or script header. Feeds the refactor loop before editing the file with the filesystem tools.',
+    parameters: {
+      engine: {
+        type: 'string',
+        description: 'Engine id (e.g. "godot"). Omit when exactly one engine is registered.',
+      },
+      project: {
+        type: 'string',
+        required: true,
+        description: 'Path to the engine project directory (for Godot: the folder containing project.godot).',
+      },
+      assetPath: {
+        type: 'string',
+        required: true,
+        description: 'Project-relative asset path (e.g. res://main.tscn, player/player.gd); absolute or escaping paths are rejected.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          assetPath: { type: 'string', required: true },
+          exists: { type: 'boolean', required: true },
+          kind: { type: 'string', required: true, enum: ['scene', 'script', 'texture', 'audio', 'font', 'shader', 'config', 'other'] },
+          bytes: { oneOf: [{ type: 'integer' }, { type: 'null' }] },
+          nodes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string', required: true },
+                type: { type: 'string', required: true },
+                parent: { type: 'string', required: true },
+              },
+            },
+          },
+          extends: { type: 'string' },
+          className: { type: 'string' },
+          tool: { type: 'boolean' },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: renderAssetQuery(value),
+      }],
+    },
+    async execute(args, exec) {
+      const info = await ctx.gameRuntimes.queryAsset({
+        ...args.engine !== undefined ? { engine: args.engine } : {},
+        project: args.project,
+        assetPath: args.assetPath,
+      })
+      exec.signal.throwIfAborted()
+      return {
+        assetPath: info.assetPath,
+        exists: info.exists,
+        kind: info.kind,
+        bytes: info.bytes ?? null,
+        ...info.tscn !== undefined ? { nodes: [...info.tscn.nodes] } : {},
+        ...info.script?.extends !== undefined ? { extends: info.script.extends } : {},
+        ...info.script?.className !== undefined ? { className: info.script.className } : {},
+        ...info.script !== undefined ? { tool: info.script.tool } : {},
+      }
+    },
+    presentCall: args => ({
+      card: 'generic',
+      title: `Query asset ${args.assetPath}`,
+      kind: 'read',
+      rawInput: { project: args.project, assetPath: args.assetPath },
+    }),
+  }))
+}
+
+/** One flattened scene node row in the model-facing output. */
+interface SceneEntry {
+  path: string
+  type: string
+  name: string
+}
+
+/** Flatten a nested scene tree into file-order rows. */
+function flattenSceneNode(node: SceneNode, into: SceneEntry[]): void {
+  into.push({ path: node.path, type: node.type, name: node.name })
+  for (const child of node.children) flattenSceneNode(child, into)
+}
+
+/** One model-facing asset-query summary line. */
+function renderAssetQuery(value: {
+  assetPath: string
+  exists: boolean
+  kind: string
+  bytes?: number | null
+  nodes?: { name: string; type: string; parent: string }[]
+  extends?: string
+  className?: string
+  tool?: boolean
+}): string {
+  if (!value.exists) return `game_query_asset: ${value.assetPath} does not exist.`
+  const parts = [`game_query_asset: ${value.assetPath} is a ${value.kind}${value.bytes !== undefined && value.bytes !== null ? ` (${String(value.bytes)} bytes)` : ''}.`]
+  if (value.kind === 'scene' && value.nodes !== undefined) {
+    parts.push(`${value.nodes.length} declared node(s): ${value.nodes.map(node => `${node.name} (${node.type})`).join(', ')}.`)
+  }
+  if (value.kind === 'script') {
+    if (value.extends !== undefined) parts.push(`extends ${value.extends}.`)
+    if (value.className !== undefined) parts.push(`class_name ${value.className}.`)
+    if (value.tool === true) parts.push('@tool.')
+  }
+  return parts.join(' ')
 }

@@ -39,7 +39,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-tool-game` | `game_build`, `game_read_log`, `game_run` | `ctx.tools`, `ctx.gameRuntimes` | `tool/call`, `tool/result` | - | game_build, game_run, and game_read_log keep engine selection behind ctx.gameRuntimes so model-visible schemas stay stable across engine backends (Godot, Unity, Unreal, ...). |
+| `@deepseek-ai/dsh-tool-game` | `game_build`, `game_query_asset`, `game_query_scene`, `game_read_log`, `game_run` | `ctx.tools`, `ctx.gameRuntimes` | `tool/call`, `tool/result` | - | game_build, game_run, and game_read_log keep engine selection behind ctx.gameRuntimes so model-visible schemas stay stable across engine backends (Godot, Unity, Unreal, ...). |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -1907,6 +1907,65 @@ Build a game engine project through the registered engine runtime (imports asset
       "items": {
         "type": "string"
       }
+    }
+  },
+  "required": [
+    "project"
+  ]
+}
+```
+
+Source: [`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_query_asset`
+
+Query one project asset: whether it exists, its derived kind, size, and — for .tscn scenes and GDScript files — the declared node skeleton or script header. Feeds the refactor loop before editing the file with the filesystem tools.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "assetPath": {
+      "type": "string",
+      "description": "Project-relative asset path (e.g. res://main.tscn, player/player.gd); absolute or escaping paths are rejected."
+    }
+  },
+  "required": [
+    "project",
+    "assetPath"
+  ]
+}
+```
+
+Source: [`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_query_scene`
+
+Query the node tree of a game engine scene (the main scene when scenePath is omitted). Returns every node with its path, engine type, and name — the declared or live structure the engine reports — to guide .tscn/script refactors.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "scenePath": {
+      "type": "string",
+      "description": "Scene resource path to query (e.g. res://main.tscn). Omitted = the project main scene."
     }
   },
   "required": [

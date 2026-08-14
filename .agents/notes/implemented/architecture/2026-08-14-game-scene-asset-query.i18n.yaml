@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-game-scene-asset-query.md
+2026-08-14-game-scene-asset-query.md: 8ae478d1c76ea59c1707c4711bc44c0723eddb9e
+2026-08-14-game-scene-asset-query.zh.md: 1af74e1d80d66df750e0d293e80dd5ae0b2bf3df

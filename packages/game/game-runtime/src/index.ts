@@ -26,8 +26,13 @@ import type {
   GameLogText,
   InputResult,
   InputSpec,
+  CaptureRequest,
   CaptureSpec,
+  AssetInfo,
+  AssetQueryRequest,
+  AssetQuerySpec,
   SceneInfo,
+  SceneQueryRequest,
   SceneQuerySpec,
 } from './types.ts'
 import { GameError } from './types.ts'
@@ -51,10 +56,19 @@ export type {
   GameRunSpec,
   InputResult,
   InputSpec,
+  CaptureRequest,
   CaptureSpec,
+  AssetInfo,
+  AssetQueryRequest,
+  AssetQuerySpec,
+  GameAssetKind,
+  ScriptHeader,
   SceneInfo,
   SceneNode,
+  SceneQueryRequest,
   SceneQuerySpec,
+  TscnNodeEntry,
+  TscnSkeleton,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -190,6 +204,37 @@ export class GameRuntimeRegistry extends Service {
     return process
   }
 
+  /**
+   * Query one scene tree snapshot through the selected engine.
+   * @param request - the project, optional engine, and optional scene path.
+   * @returns the scene tree snapshot.
+   */
+  async queryScene(request: SceneQueryRequest): Promise<SceneInfo> {
+    const runtime = this.resolve({ engine: request.engine })
+    return runtime.queryScene(runtime.resolveSceneQuery(request))
+  }
+
+  /**
+   * Query one project asset through the selected engine. A missing asset resolves with
+   * `exists: false`; rejection is reserved for resolution and invalid requests.
+   * @param request - the project, optional engine, and asset path.
+   * @returns the asset metadata.
+   */
+  async queryAsset(request: AssetQueryRequest): Promise<AssetInfo> {
+    const runtime = this.resolve({ engine: request.engine })
+    return runtime.queryAsset(runtime.resolveAssetQuery(request))
+  }
+
+  /**
+   * Capture one frame of the project through the selected engine, writing a PNG.
+   * @param request - the project, output path, optional engine/scene, and viewport hints.
+   * @returns the captured frame metadata.
+   */
+  async captureFrame(request: CaptureRequest): Promise<GameFrame> {
+    const runtime = this.resolve({ engine: request.engine })
+    return runtime.captureFrame(runtime.resolveCapture(request))
+  }
+
   /** The tracked process record for one id, or `undefined` when unknown. */
   process(processId: string): GameProcess | undefined {
     return this.processes.get(processId)
@@ -276,7 +321,7 @@ function resolveRuntime(selection: EngineSelection): EngineRuntime {
  * through `ctx.subprocess`; the seam itself stays mechanism-free.
  *
  * `start` is asynchronous because providers must resolve the engine executable in their
- * execution world before spawning; `captureFrame`/`queryScene`/`sendInput` are the M2–M4
+ * execution world before spawning; `captureFrame`/`sendInput` are the M3–M4
  * observation/input surface, and a provider that has not implemented one must throw
  * {@link GameError} `GAME_CAPABILITY_UNAVAILABLE` rather than fake it.
  */
@@ -294,6 +339,15 @@ export abstract class EngineRuntime {
   /** Resolve one build request into a fully-specified build description. */
   abstract resolveBuild(request: GameBuildRequest): GameBuildSpec
 
+  /** Resolve one scene-query request into a fully-specified query description. */
+  abstract resolveSceneQuery(request: SceneQueryRequest): SceneQuerySpec
+
+  /** Resolve one asset-query request into a fully-specified query description. */
+  abstract resolveAssetQuery(request: AssetQueryRequest): AssetQuerySpec
+
+  /** Resolve one frame-capture request into a fully-specified capture description. */
+  abstract resolveCapture(request: CaptureRequest): CaptureSpec
+
   /** Run one build; a non-zero engine exit resolves with `ok: false`. */
   abstract build(spec: GameBuildSpec): Promise<GameBuildResult>
 
@@ -305,6 +359,9 @@ export abstract class EngineRuntime {
 
   /** Query the project's scene tree (M2 refactor seam). */
   abstract queryScene(spec: SceneQuerySpec): Promise<SceneInfo>
+
+  /** Query one project asset's metadata (M2 refactor seam). */
+  abstract queryAsset(spec: AssetQuerySpec): Promise<AssetInfo>
 
   /** Deliver one input action to a running game process (M4 playtest seam). */
   abstract sendInput(spec: InputSpec): Promise<InputResult>

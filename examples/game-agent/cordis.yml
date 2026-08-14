@@ -28,9 +28,23 @@
     godotExecutable: !!js process.env.DSH_GODOT_EXECUTABLE ?? 'godot'
     argvPrefix: !!js "process.env.DSH_GODOT_PREFIX ? process.env.DSH_GODOT_PREFIX.split(',') : []"
 
-# The model-facing game tools: game_build / game_run / game_read_log.
+# The model-facing game tools: build/run/read-log plus the M2 refactor
+# queries (game_query_scene / game_query_asset).
 - id: tool-game
   name: '@deepseek-ai/dsh-tool-game'
+
+# Filesystem rows for the refactor loop: the agent inspects scenes and assets
+# with the game query tools, then reads and edits .tscn/scripts with these.
+- id: fs-local
+  name: '@deepseek-ai/dsh-fs-local'
+  config:
+    cwd: !!js process.cwd()
+
+- id: fs-observation-policy
+  name: '@deepseek-ai/dsh-fs-observation-policy'
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
 
 # The example composition pre-creates one fresh `main` agent for its test driver.
 - id: agent-spine
@@ -45,8 +59,10 @@
     persona: |
       You are game-agent, a game engineering assistant powered by the {{model}} model.
 
-      Build engine projects with game_build, start them with game_run, and read
-      their engine log with game_read_log. Keep answers brief and factual.
+      Build engine projects with game_build, start them with game_run, read their
+      engine log with game_read_log, and inspect scenes and assets with
+      game_query_scene / game_query_asset before editing .tscn or script files
+      with the filesystem tools. Keep answers brief and factual.
 
 - id: persistence
   name: '@deepseek-ai/dsh-session-persistence-jsonl'

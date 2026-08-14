@@ -168,6 +168,26 @@ export interface CaptureSpec {
   readonly projectPath: string
   /** Where the captured PNG is written. */
   readonly outputPath: string
+  /** Scene resource path to capture; omitted = the project's main scene. */
+  readonly scenePath?: string | undefined
+  /** Viewport width override; omitted = the engine's default. */
+  readonly width?: number | undefined
+  /** Viewport height override; omitted = the engine's default. */
+  readonly height?: number | undefined
+  /** Explicit environment entries for the capture process, merged over the provider's scrub. */
+  readonly env?: Readonly<Record<string, string>> | undefined
+}
+
+/** Registry-level frame-capture request; `engine` resolves with the same rules as {@link GameRunRequest}. */
+export interface CaptureRequest {
+  /** The engine to capture with; omitted = auto-select when exactly one engine is registered. */
+  readonly engine?: GameEngineId | undefined
+  /** Path to the engine project directory. */
+  readonly project: string
+  /** Where the captured PNG is written. */
+  readonly outputPath: string
+  /** Scene resource path to capture (e.g. `res://main.tscn`); omitted = the project's main scene. */
+  readonly scenePath?: string | undefined
   /** Viewport width override; omitted = the engine's default. */
   readonly width?: number | undefined
   /** Viewport height override; omitted = the engine's default. */
@@ -190,6 +210,83 @@ export interface SceneQuerySpec {
   readonly projectPath: string
   /** Scene resource path to query; omitted = the project's main scene. */
   readonly scenePath?: string | undefined
+  /** Explicit environment entries for the probe process, merged over the provider's scrub. */
+  readonly env?: Readonly<Record<string, string>> | undefined
+}
+
+/** Registry-level scene-query request; `engine` resolves with the same rules as {@link GameRunRequest}. */
+export interface SceneQueryRequest {
+  /** The engine to query with; omitted = auto-select when exactly one engine is registered. */
+  readonly engine?: GameEngineId | undefined
+  /** Path to the engine project directory. */
+  readonly project: string
+  /** Scene resource path to query (e.g. `res://main.tscn`); omitted = the project's main scene. */
+  readonly scenePath?: string | undefined
+}
+
+/** Registry-level asset-query request; `engine` resolves with the same rules as {@link GameRunRequest}. */
+export interface AssetQueryRequest {
+  /** The engine to query with; omitted = auto-select when exactly one engine is registered. */
+  readonly engine?: GameEngineId | undefined
+  /** Path to the engine project directory. */
+  readonly project: string
+  /** Project-relative asset path (e.g. `main.tscn`, `res://player/player.gd`); absolute and escaping paths are rejected. */
+  readonly assetPath: string
+}
+
+/** Runtime-level asset-query spec, produced by {@link EngineRuntime.resolveAssetQuery}. */
+export interface AssetQuerySpec {
+  /** Canonical project directory. */
+  readonly projectPath: string
+  /** Project-relative asset path. */
+  readonly assetPath: string
+}
+
+/** The asset kind vocabulary derived from a project file's extension. */
+export type GameAssetKind = 'scene' | 'script' | 'texture' | 'audio' | 'font' | 'shader' | 'config' | 'other'
+
+/** One node entry of a parsed `.tscn` skeleton (declared, parent-referenced nodes). */
+export interface TscnNodeEntry {
+  /** Node name as declared. */
+  readonly name: string
+  /** Node type as declared. */
+  readonly type: string
+  /** Parent node name; `"."` for the scene root. */
+  readonly parent: string
+}
+
+/** The declared node skeleton parsed from one `.tscn` file. */
+export interface TscnSkeleton {
+  /** The declared root node name. */
+  readonly root: string
+  /** Declared nodes in file order. */
+  readonly nodes: readonly TscnNodeEntry[]
+}
+
+/** The declared header of one GDScript file (text-level heuristic, not engine semantics). */
+export interface ScriptHeader {
+  /** The `extends` target, when declared. */
+  readonly extends?: string | undefined
+  /** The `class_name` symbol, when declared. */
+  readonly className?: string | undefined
+  /** True when the script declares `@tool`. */
+  readonly tool: boolean
+}
+
+/** One asset-query outcome. Missing assets resolve with `exists: false`, not a rejection. */
+export interface AssetInfo {
+  /** The project-relative asset path that was queried. */
+  readonly assetPath: string
+  /** True when the asset file exists inside the project. */
+  readonly exists: boolean
+  /** The derived asset kind. */
+  readonly kind: GameAssetKind
+  /** File size in bytes, when the asset exists. */
+  readonly bytes?: number | undefined
+  /** The declared node skeleton, when the asset is a `.tscn` scene. */
+  readonly tscn?: TscnSkeleton | undefined
+  /** The declared script header, when the asset is a GDScript file. */
+  readonly script?: ScriptHeader | undefined
 }
 
 /** One node of a queried scene tree. */
@@ -238,6 +335,8 @@ export type GameErrorCode =
   | 'GAME_EXECUTABLE_MISSING'
   | 'GAME_PROCESS_UNKNOWN'
   | 'GAME_CAPABILITY_UNAVAILABLE'
+  | 'GAME_QUERY_FAILED'
+  | 'GAME_CAPTURE_FAILED'
 
 /**
  * Typed game-seam error with a machine-routable, open-string `code`. Shared codes cover
