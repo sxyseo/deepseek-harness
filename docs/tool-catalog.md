@@ -39,6 +39,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-tool-game` | `game_build`, `game_read_log`, `game_run` | `ctx.tools`, `ctx.gameRuntimes` | `tool/call`, `tool/result` | - | game_build, game_run, and game_read_log keep engine selection behind ctx.gameRuntimes so model-visible schemas stay stable across engine backends (Godot, Unity, Unreal, ...). |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -1871,3 +1872,106 @@ Search the web for current information. Returns an optional summary answer and a
 Source: [`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.
+
+<a id="deepseek-aidsh-tool-game"></a>
+
+## `@deepseek-ai/dsh-tool-game`
+
+### `game_build`
+
+Build a game engine project through the registered engine runtime (imports assets and optionally exports a preset). Returns the exit status and bounded engine log.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "exportPreset": {
+      "type": "string",
+      "description": "Engine-specific export preset/target name (e.g. a Godot export preset from export_presets.cfg)."
+    },
+    "outputPath": {
+      "type": "string",
+      "description": "Build artifact output path. Defaults to <project>/dist/<exportPreset> when omitted."
+    },
+    "args": {
+      "type": "array",
+      "description": "Extra CLI arguments appended after the engine build defaults.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "project"
+  ]
+}
+```
+
+Source: [`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_read_log`
+
+Read the engine log of a running or recently exited game process started by game_run (the final crash log of an exited process stays readable).
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "processId": {
+      "type": "string",
+      "description": "The processId returned by game_run."
+    },
+    "engine": {
+      "type": "string",
+      "description": "Engine id that started the process. Omit when exactly one engine is registered."
+    }
+  },
+  "required": [
+    "processId"
+  ]
+}
+```
+
+Source: [`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_run`
+
+Start a game engine project as a tracked background process. Returns the processId used by game_read_log to read its engine log. The process keeps running until the session ends or the registry stops it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "args": {
+      "type": "array",
+      "description": "Extra CLI arguments appended after the engine run defaults.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "project"
+  ]
+}
+```
+
+Source: [`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+game_build, game_run, and game_read_log keep engine selection behind ctx.gameRuntimes so model-visible schemas stay stable across engine backends (Godot, Unity, Unreal, ...).

@@ -1,0 +1,36 @@
+# The dsh-game bundle patch: a one-shot game-engineering profile over dsh-base.
+# It mounts the game runtime registry, the Godot engine backend, and the
+# model-facing game tools, then reuses the dsh-headless startup/runner rows, so
+# `dsh --profile game "<task>"` answers one task through an agent that can
+# build, run, and read the logs of engine projects.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a game engineering agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+- insert:
+    # The game runtime registry: engine resolution and tracked processes.
+    - id: game-runtime
+      name: '@deepseek-ai/dsh-game-runtime'
+      config:
+        defaultEngine: godot
+
+    # The Godot backend: a facade over the Godot CLI through ctx.subprocess.
+    - id: game-runtime-godot
+      name: '@deepseek-ai/dsh-game-runtime-godot'
+
+    # The model-facing game tools (game_build / game_run / game_read_log).
+    - id: tool-game
+      name: '@deepseek-ai/dsh-tool-game'
+
+    # Reused one-shot driver from the headless bundle: parse the task
+    # positional, create one agent, print its final answer, and exit.
+    - id: headless-startup
+      name: '@deepseek-ai/dsh-headless/startup'
+
+    - id: headless-runner
+      name: '@deepseek-ai/dsh-headless'
+      inject: [headlessStartup]
+      config:
+        task: !!js ctx.headlessStartup.task

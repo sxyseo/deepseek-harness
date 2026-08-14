@@ -41,6 +41,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-tool-game` | `game_build`、`game_read_log`、`game_run` | `ctx.tools`、`ctx.gameRuntimes` | `tool/call`、`tool/result` | - | game_build、game_run 和 game_read_log 将引擎选择置于 ctx.gameRuntimes 之后，使模型可见 schema 在更换引擎后端（Godot、Unity、Unreal……）时保持稳定。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -1876,3 +1877,106 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 来源：[`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。
+
+<a id="deepseek-aidsh-tool-game"></a>
+
+## `@deepseek-ai/dsh-tool-game`
+
+### `game_build`
+
+经已注册的引擎运行时构建游戏引擎项目（导入资源，可选导出预设）。返回退出状态与有界的引擎日志。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "exportPreset": {
+      "type": "string",
+      "description": "Engine-specific export preset/target name (e.g. a Godot export preset from export_presets.cfg)."
+    },
+    "outputPath": {
+      "type": "string",
+      "description": "Build artifact output path. Defaults to <project>/dist/<exportPreset> when omitted."
+    },
+    "args": {
+      "type": "array",
+      "description": "Extra CLI arguments appended after the engine build defaults.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "project"
+  ]
+}
+```
+
+来源：[`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_read_log`
+
+读取由 game_run 启动的运行中或刚退出游戏进程的引擎日志（已退出进程的最终崩溃日志仍可读）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "processId": {
+      "type": "string",
+      "description": "The processId returned by game_run."
+    },
+    "engine": {
+      "type": "string",
+      "description": "Engine id that started the process. Omit when exactly one engine is registered."
+    }
+  },
+  "required": [
+    "processId"
+  ]
+}
+```
+
+来源：[`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_run`
+
+把游戏引擎项目作为受跟踪的后台进程启动。返回 game_read_log 读取其引擎日志所用的 processId。进程持续运行，直到会话结束或注册表停止它。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "args": {
+      "type": "array",
+      "description": "Extra CLI arguments appended after the engine run defaults.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "project"
+  ]
+}
+```
+
+来源：[`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+game_build、game_run 和 game_read_log 将引擎选择置于 ctx.gameRuntimes 之后，使模型可见 schema 在更换引擎后端（Godot、Unity、Unreal……）时保持稳定。

@@ -1,0 +1,7 @@
+{
+  "name": "game-agent-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Runnable demo: a game-engineering agent that builds, runs, and reads the logs of a Godot project through the game runtime seam"
+}

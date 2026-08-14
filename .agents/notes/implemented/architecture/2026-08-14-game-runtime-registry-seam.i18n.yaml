@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-game-runtime-registry-seam.md
+2026-08-14-game-runtime-registry-seam.md: be35a491222bcc0cac9ae0479e88d50c7fe6fa8a
+2026-08-14-game-runtime-registry-seam.zh.md: 8f7705772efa3cc5824371ab244c81c977bf0ea1

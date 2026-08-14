@@ -180,6 +180,9 @@ importers:
       '@deepseek-ai/dsh-fs-local':
         specifier: workspace:^
         version: link:../../packages/fs/fs-local
+      '@deepseek-ai/dsh-game':
+        specifier: workspace:^
+        version: link:../../packages/bundle/game
       '@deepseek-ai/dsh-goal':
         specifier: workspace:^
         version: link:../../packages/goal/goal
@@ -497,6 +500,12 @@ importers:
       '@deepseek-ai/dsh-fs-sandbox':
         specifier: workspace:^
         version: link:../packages/fs/fs-sandbox
+      '@deepseek-ai/dsh-game-runtime':
+        specifier: workspace:*
+        version: link:../packages/game/game-runtime
+      '@deepseek-ai/dsh-game-runtime-godot':
+        specifier: workspace:*
+        version: link:../packages/game/game-runtime-godot
       '@deepseek-ai/dsh-goal':
         specifier: workspace:*
         version: link:../packages/goal/goal
@@ -677,6 +686,9 @@ importers:
       '@deepseek-ai/dsh-tool-fs-search':
         specifier: workspace:*
         version: link:../packages/fs/tool-fs-search
+      '@deepseek-ai/dsh-tool-game':
+        specifier: workspace:*
+        version: link:../packages/game/tool-game
       '@deepseek-ai/dsh-tool-goal':
         specifier: workspace:*
         version: link:../packages/goal/tool-goal
@@ -1211,6 +1223,28 @@ importers:
       '@deepseek-ai/dsh-workflow-worker-thread':
         specifier: workspace:^
         version: link:../../workflow/workflow-worker-thread
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
+  packages/bundle/game:
+    dependencies:
+      '@deepseek-ai/dsh-game-runtime':
+        specifier: workspace:^
+        version: link:../../game/game-runtime
+      '@deepseek-ai/dsh-game-runtime-godot':
+        specifier: workspace:^
+        version: link:../../game/game-runtime-godot
+      '@deepseek-ai/dsh-headless':
+        specifier: workspace:^
+        version: link:../headless
+      '@deepseek-ai/dsh-tool-game':
+        specifier: workspace:^
+        version: link:../../game/tool-game
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -4390,6 +4424,65 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
+
+  packages/game/game-runtime:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+
+  packages/game/game-runtime-godot:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-game-runtime':
+        specifier: workspace:^
+        version: link:../game-runtime
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-subprocess':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess
+      '@deepseek-ai/dsh-subprocess-local':
+        specifier: workspace:^
+        version: link:../../subprocess/subprocess-local
+
+  packages/game/tool-game:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-game-runtime':
+        specifier: workspace:^
+        version: link:../game-runtime
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../core/system-prompt

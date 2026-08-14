@@ -60,6 +60,8 @@ import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
+import * as ToolGame from '@deepseek-ai/dsh-tool-game'
+import GameRuntimeRegistry from '@deepseek-ai/dsh-game-runtime'
 import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
@@ -550,6 +552,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-game',
+    dir: 'tool-game',
+    source: 'packages/game/tool-game/src/index.ts',
+    requires: ['ctx.tools', 'ctx.gameRuntimes'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Mount the game runtime registry so all three tools register. Their
+      // schemas do not depend on which engine backends are registered, and the
+      // optional `engine` field resolves through the registry at execution time.
+      await ctx.plugin(GameRuntimeRegistry)
+      await ctx.plugin(ToolGame)
+    },
+    note:
+      'game_build, game_run, and game_read_log keep engine selection behind ctx.gameRuntimes so model-visible schemas stay stable across engine backends (Godot, Unity, Unreal, ...).',
   },
 ]
 

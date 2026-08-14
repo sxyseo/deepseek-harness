@@ -1,0 +1,55 @@
+# One-shot game-engineering agent: the game runtime registry, the Godot
+# backend, and the model-facing game tools over a minimal coding-agent core.
+# The Godot row reads the same environment seam the test fixture sets, so the
+# same composition runs against a real engine install or an engine shim.
+
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    thinking: enabled
+    reasoningEffort: max
+
+# Managed child-process groups for the Godot backend's CLI spawns.
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+
+# The game runtime registry: engine resolution and tracked live processes.
+- id: game-runtime
+  name: '@deepseek-ai/dsh-game-runtime'
+  config:
+    defaultEngine: godot
+
+# The Godot backend. DSH_GODOT_EXECUTABLE / DSH_GODOT_PREFIX (comma-separated
+# wrapper argv, e.g. "run,org.godotengine.Godot" for flatpak) override the
+# defaults; the test fixture points both at a Node-run engine shim.
+- id: game-runtime-godot
+  name: '@deepseek-ai/dsh-game-runtime-godot'
+  config:
+    godotExecutable: !!js process.env.DSH_GODOT_EXECUTABLE ?? 'godot'
+    argvPrefix: !!js "process.env.DSH_GODOT_PREFIX ? process.env.DSH_GODOT_PREFIX.split(',') : []"
+
+# The model-facing game tools: game_build / game_run / game_read_log.
+- id: tool-game
+  name: '@deepseek-ai/dsh-tool-game'
+
+# The example composition pre-creates one fresh `main` agent for its test driver.
+- id: agent-spine
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    agents:
+      - id: main
+        provider: deepseek-official
+        model: deepseek-v4-flash
+        cwd: !!js process.cwd()
+    workspaceContext: false
+    persona: |
+      You are game-agent, a game engineering assistant powered by the {{model}} model.
+
+      Build engine projects with game_build, start them with game_run, and read
+      their engine log with game_read_log. Keep answers brief and factual.
+
+- id: persistence
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: './.sessions'
+    compression: !!js "process.env.DSH_SNAPSHOT === undefined ? 'zstd' : 'none'"
