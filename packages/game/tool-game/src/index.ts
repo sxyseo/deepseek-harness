@@ -204,7 +204,6 @@ export function apply(ctx: Context): void {
           : `game_read_log: ${value.processId} (${value.engine}, ${value.state}):\n${value.log.text}`,
       }],
     },
-    // oxlint-disable-next-line typescript/require-await -- registry reads are synchronous; async satisfies the execute() Promise contract.
     async execute(args) {
       // readLog throws GAME_PROCESS_UNKNOWN for an unknown id, so a reached
       // process lookup below is always defined.

@@ -337,7 +337,6 @@ export class GodotRuntime extends EngineRuntime {
     }
   }
 
-  // oxlint-disable-next-line typescript/require-await -- filesystem reads are synchronous; async satisfies the seam's Promise contract.
   override async queryAsset(spec: AssetQuerySpec): Promise<AssetInfo> {
     const absolute = join(spec.projectPath, spec.assetPath)
     const info = statSync(absolute, { throwIfNoEntry: false })
@@ -356,7 +355,6 @@ export class GodotRuntime extends EngineRuntime {
     }
   }
 
-  // oxlint-disable-next-line typescript/require-await -- async stub shape: the M4 implementation awaits input delivery.
   override async sendInput(_spec: InputSpec): Promise<InputResult> {
     throw new GameError('the godot backend has not implemented input delivery yet (M4 playtest seam)', 'GAME_CAPABILITY_UNAVAILABLE')
   }
