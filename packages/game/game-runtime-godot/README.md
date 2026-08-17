@@ -25,11 +25,12 @@ Operational overrides feed these same fields from the composition, not a hidden 
 - **Build**: `godot --headless --path <project> --import`, followed by `--export-release <preset> <output>` when `exportPreset` is set (default output `<project>/dist/<preset>`).
 - **Scene query**: `godot --headless --path <project> --script <probe> -- [scenePath]` — the shipped `assets/scene-query.gd` probe instantiates the scene and prints its node tree as a `SCENE_QUERY_RESULT <json>` stdout line. Engine-side failures (unloadable scene, malformed payload) surface as `GAME_QUERY_FAILED` with the probe's stderr.
 - **Asset query**: filesystem-backed, no engine spawn — existence/size, an extension-derived `kind`, a declared node skeleton parsed from `.tscn` node lines, and a `extends`/`class_name`/`@tool` header parsed from GDScript text. These are documented text heuristics over the DECLARED file content, not engine semantics (inherited scenes are not expanded).
+- **Frame capture**: `godot --headless --path <project> --script <probe> -- <outputPath> [scenePath] [width] [height]` — the shipped `assets/capture-frame.gd` probe instantiates the scene, waits one frame, saves the viewport as a PNG, and prints one `CAPTURE_RESULT <json>` line. Relative output paths resolve against the project directory; the reported `imagePath` is absolute. Engine-side failures surface as `GAME_CAPTURE_FAILED`.
 - The project path must name an existing directory (`GAME_INVALID_REQUEST` otherwise). A non-zero engine exit is a build RESULT (`ok: false`), not a rejection.
 
 ## Model Experience
 
-Indirectly, through the model-facing game tools (`dsh-tool-game`), which render this backend's builds, runs, engine logs, and scene/asset queries; the provider registers no prompt, schema, or result text of its own.
+Indirectly, through the model-facing game tools (`dsh-tool-game`), which render this backend's builds, runs, engine logs, scene/asset queries, and frame captures; the provider registers no prompt, schema, or result text of its own.
 
 #### KV Cache effect
 
@@ -37,10 +38,10 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
-- **Frame capture and input delivery are not implemented** — `captureFrame` / `sendInput` throw `GAME_CAPABILITY_UNAVAILABLE`; they land with the M3–M4 milestones.
-- **Scene queries need a real Godot** — the probe runs through the engine binary; without an installed Godot (or an `argvPrefix` wrapper) scene queries fail with `GAME_EXECUTABLE_MISSING`.
-- **Scene probes instantiate, not evaluate** — the probe reports the node tree of the INSTANTIATED scene without running frames, so runtime-added children are invisible; for the DECLARED structure of a `.tscn` use `game_query_asset`.
+- **Input delivery is not implemented** — `sendInput` throws `GAME_CAPABILITY_UNAVAILABLE`; it lands with the M4 milestone.
+- **Scene queries and frame captures need a real Godot** — both probes run through the engine binary; without an installed Godot (or an `argvPrefix` wrapper) they fail with `GAME_EXECUTABLE_MISSING`.
+- **Headless rendering is host-dependent** — frame capture reads the viewport back in headless mode; on hosts without a usable rendering driver the probe reports `GAME_CAPTURE_FAILED`.
+- **Scene probes instantiate, not evaluate** — the scene-query probe reports the node tree of the INSTANTIATED scene without running frames, so runtime-added children are invisible; for the DECLARED structure of a `.tscn` use `game_query_asset`.
 - **Asset queries are text heuristics** — node/script parsing reads the file as text; exotic `.tscn` attribute orders or script syntax may parse partially.
-- **Headless only** — the backend never opens a GUI window or a real viewport; visual capture must use Godot's headless rendering paths.
 - **No project.godot validation** — the backend checks the directory exists, not that it contains a valid Godot project; the engine's own error surfaces in the build/run/query output.
 - **Export presets must pre-exist** — `exportPreset` must name a preset from the project's `export_presets.cfg`; the backend does not author presets.

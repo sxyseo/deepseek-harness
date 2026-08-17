@@ -32,6 +32,7 @@ Multi-engine game runtime capability seam (`ctx.gameRuntimes`) for the DeepSeek 
 | `stop(processId)` | Terminate one tracked process tree (idempotent); its record is kept for a final log read. |
 | `queryScene({ project, scenePath?, engine? })` | Query one scene tree snapshot through the selected engine. |
 | `queryAsset({ project, assetPath, engine? })` | Query one project asset's metadata; a missing asset resolves with `exists: false`. |
+| `captureFrame({ project, outputPath, scenePath?, width?, height?, engine? })` | Capture one frame of the project through the selected engine, writing a PNG. |
 
 ### Lifecycle
 
@@ -39,7 +40,7 @@ Registry disposal terminates every still-running tracked game tree. Registration
 
 ## EngineRuntime
 
-The abstract backend contract a provider implements; it is NOT a Cordis service itself — the registry owns its lifetime. `start` is asynchronous because providers must resolve the engine executable before spawning. `captureFrame` / `sendInput` are the M3–M4 observation/input surface; a provider that has not implemented one must throw `GameError` `GAME_CAPABILITY_UNAVAILABLE` rather than fake a result.
+The abstract backend contract a provider implements; it is NOT a Cordis service itself — the registry owns its lifetime. `start` is asynchronous because providers must resolve the engine executable before spawning. `sendInput` is the M4 input surface; a provider that has not implemented it must throw `GameError` `GAME_CAPABILITY_UNAVAILABLE` rather than fake a result.
 
 ```ts
 export abstract class EngineRuntime {
@@ -47,6 +48,7 @@ export abstract class EngineRuntime {
   abstract resolveBuild(request: GameBuildRequest): GameBuildSpec
   abstract resolveSceneQuery(request: SceneQueryRequest): SceneQuerySpec
   abstract resolveAssetQuery(request: AssetQueryRequest): AssetQuerySpec
+  abstract resolveCapture(request: CaptureRequest): CaptureSpec
   abstract build(spec: GameBuildSpec): Promise<GameBuildResult>
   abstract start(spec: GameRunSpec): Promise<GameProcess>
   abstract captureFrame(spec: CaptureSpec): Promise<GameFrame>
@@ -58,7 +60,7 @@ export abstract class EngineRuntime {
 
 ## Errors
 
-`GameError` extends `HarnessError` with a machine-routable code. Shared codes: `GAME_DUPLICATE_RUNTIME`, `GAME_ENGINE_UNKNOWN`, `GAME_ENGINE_AMBIGUOUS`, `GAME_ENGINE_UNAVAILABLE`, `GAME_INVALID_REQUEST`, `GAME_EXECUTABLE_MISSING`, `GAME_PROCESS_UNKNOWN`, `GAME_CAPABILITY_UNAVAILABLE`, `GAME_QUERY_FAILED`. Providers may add provider-specific codes; consumers must tolerate them.
+`GameError` extends `HarnessError` with a machine-routable code. Shared codes: `GAME_DUPLICATE_RUNTIME`, `GAME_ENGINE_UNKNOWN`, `GAME_ENGINE_AMBIGUOUS`, `GAME_ENGINE_UNAVAILABLE`, `GAME_INVALID_REQUEST`, `GAME_EXECUTABLE_MISSING`, `GAME_PROCESS_UNKNOWN`, `GAME_CAPABILITY_UNAVAILABLE`, `GAME_QUERY_FAILED`, `GAME_CAPTURE_FAILED`. Providers may add provider-specific codes; consumers must tolerate them.
 
 ## Model Experience
 
@@ -70,7 +72,8 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
-- **Frame capture and input delivery are declared but unimplemented** — `captureFrame` / `sendInput` exist on the seam so providers can grow into them; no Godot implementation or model-facing tool ships yet (M3–M4 milestones). Tools that do not exist yet: `game_capture_frame`, `game_send_input`.
+- **Input delivery is declared but unimplemented** — `sendInput` exists on the seam so providers can grow into it; no Godot implementation or model-facing tool ships yet (M4 milestone). Tool that does not exist yet: `game_send_input`.
 - **No model-facing stop tool** — a started process runs until the session/registry disposes or the backend terminates it; `registry.stop()` is host API only. A `game_stop` tool is deferred to the playtest milestone.
+- **Frame capture is provider-defined** — the seam returns `{ imagePath, width, height }`; the mechanism (and headless rendering availability) is each provider's documented choice.
 - **Asset queries are provider-defined** — the seam normalizes kinds and structures (`tscn` skeleton, `script` header) but the extraction mechanism is each provider's documented choice; providers may differ in what they can report for exotic assets.
 - **Engine availability is the deployment's job** — the seam resolves executables through `ctx.subprocess`; a deployment without an installed engine binary fails each build/run/query with `GAME_EXECUTABLE_MISSING`.

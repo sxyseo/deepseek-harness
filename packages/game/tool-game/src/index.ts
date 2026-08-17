@@ -204,6 +204,7 @@ export function apply(ctx: Context): void {
           : `game_read_log: ${value.processId} (${value.engine}, ${value.state}):\n${value.log.text}`,
       }],
     },
+    // oxlint-disable-next-line typescript/require-await -- registry reads are synchronous; async satisfies the execute() Promise contract.
     async execute(args) {
       // readLog throws GAME_PROCESS_UNKNOWN for an unknown id, so a reached
       // process lookup below is always defined.
@@ -368,6 +369,72 @@ export function apply(ctx: Context): void {
       title: `Query asset ${args.assetPath}`,
       kind: 'read',
       rawInput: { project: args.project, assetPath: args.assetPath },
+    }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: GAME_CAPTURE_FRAME_TOOL,
+    description: 'Capture one frame of a game engine scene as a PNG file. Returns the image path and pixel size; read the image back with read_image to inspect the frame (the observation loop).',
+    parameters: {
+      engine: {
+        type: 'string',
+        description: 'Engine id (e.g. "godot"). Omit when exactly one engine is registered.',
+      },
+      project: {
+        type: 'string',
+        required: true,
+        description: 'Path to the engine project directory (for Godot: the folder containing project.godot).',
+      },
+      outputPath: {
+        type: 'string',
+        required: true,
+        description: 'Path the captured PNG is written to; relative paths resolve against the project directory.',
+      },
+      scenePath: {
+        type: 'string',
+        description: 'Scene resource path to capture (e.g. res://main.tscn). Omitted = the project main scene.',
+      },
+      width: {
+        type: 'integer',
+        description: 'Viewport width hint; omitted = the engine default.',
+      },
+      height: {
+        type: 'integer',
+        description: 'Viewport height hint; omitted = the engine default.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          imagePath: { type: 'string', required: true },
+          width: { type: 'integer', required: true },
+          height: { type: 'integer', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `game_capture_frame: captured ${value.imagePath} (${String(value.width)}x${String(value.height)}). Read it back with read_image to inspect the frame.`,
+      }],
+    },
+    async execute(args, exec) {
+      const frame = await ctx.gameRuntimes.captureFrame({
+        ...args.engine !== undefined ? { engine: args.engine } : {},
+        project: args.project,
+        outputPath: args.outputPath,
+        ...args.scenePath !== undefined ? { scenePath: args.scenePath } : {},
+        ...args.width !== undefined ? { width: args.width } : {},
+        ...args.height !== undefined ? { height: args.height } : {},
+      })
+      exec.signal.throwIfAborted()
+      return { imagePath: frame.imagePath, width: frame.width, height: frame.height }
+    },
+    presentCall: args => ({
+      card: 'generic',
+      title: `Capture frame ${args.outputPath}`,
+      kind: 'other',
+      rawInput: { project: args.project, outputPath: args.outputPath },
     }),
   }))
 }

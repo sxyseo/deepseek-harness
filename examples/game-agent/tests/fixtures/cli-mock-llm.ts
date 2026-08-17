@@ -22,6 +22,8 @@ let readAttempts = 0
 /** Facts recovered from the query tools for the final answer. */
 let sceneRootType = 'unknown'
 let assetKind = 'other'
+/** The captured frame path recovered from game_capture_frame. */
+let capturedImagePath: string | undefined
 
 interface PriorTool {
   name: string
@@ -80,7 +82,8 @@ async function* finalAnswer(reply: string): AsyncIterable<StreamChunk> {
 /**
  * Keyless game-agent adapter: one real game_build/game_run/game_read_log chain
  * (with bounded log polling) followed by the M2 refactor loop — scene query,
- * asset query, filesystem read, filesystem edit — and a final answer.
+ * asset query, filesystem read, filesystem edit — then the M3 observation loop:
+ * frame capture + read_image — and a final answer.
  */
 class CliMockAdapter extends LlmAdapter {
   override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -88,6 +91,7 @@ class CliMockAdapter extends LlmAdapter {
       provider,
       id: model,
       name: model,
+      inputModalities: ['text', 'image'],
       reasoning: {
         efforts: [
           { id: OFF, name: 'Off' },
@@ -151,7 +155,18 @@ class CliMockAdapter extends LlmAdapter {
       return
     }
     if (last.name === 'edit') {
-      yield * finalAnswer(`GAME_AGENT_SMOKE_OK scene=${sceneRootType} asset=${assetKind} edit=done ${last.text.trim()}`)
+      // M3 observation loop: capture a frame, then read it back as an image.
+      yield * toolCall('game-smoke-capture', 'game_capture_frame', { project: PROJECT, outputPath: 'frame.png' }, { input: 12, output: 4 })
+      return
+    }
+    if (last.name === 'game_capture_frame') {
+      const match = /captured (\S+) \(/.exec(last.text)
+      capturedImagePath = match?.[1]
+      yield * toolCall('game-smoke-read-image', 'read_image', { file_path: capturedImagePath ?? 'game-project/frame.png' }, { input: 11, output: 3 })
+      return
+    }
+    if (last.name === 'read_image') {
+      yield * finalAnswer(`GAME_AGENT_SMOKE_OK scene=${sceneRootType} asset=${assetKind} edit=done capture=${capturedImagePath ?? ''} ${last.text.trim()}`)
     }
   }
 }

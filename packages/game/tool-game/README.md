@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Model-facing game tools over the game runtime capability seam (`ctx.gameRuntimes`): `game_build`, `game_run`, `game_read_log`, `game_query_scene`, and `game_query_asset`. Each tool carries an optional `engine` field resolved by the registry (an explicit id wins; otherwise exactly one registered engine is required). The tools are thin consumers — execution, process tracking, and queries live in the seam, so every engine provider (Godot, Unity, Unreal, ...) is reachable through the same tools. The query tools feed the refactor loop: inspect the scene tree and asset metadata, then modify `.tscn`/scripts with the ordinary filesystem tools.
+Model-facing game tools over the game runtime capability seam (`ctx.gameRuntimes`): `game_build`, `game_run`, `game_read_log`, `game_query_scene`, `game_query_asset`, and `game_capture_frame`. Each tool carries an optional `engine` field resolved by the registry (an explicit id wins; otherwise exactly one registered engine is required). The tools are thin consumers — execution, process tracking, queries, and captures live in the seam, so every engine provider (Godot, Unity, Unreal, ...) is reachable through the same tools. The query tools feed the refactor loop (inspect, then modify `.tscn`/scripts with the filesystem tools); `game_capture_frame` feeds the observation loop (capture a PNG, then view it with `read_image`).
 
 ## Tools
 
@@ -13,12 +13,13 @@ Model-facing game tools over the game runtime capability seam (`ctx.gameRuntimes
 | `game_read_log` | Read the engine log of a running or recently exited process. | `state`, `exitCode`, bounded `log`. |
 | `game_query_scene` | Query the node tree of one scene (main scene when omitted). | `scenePath`, flat `nodes[]` of `{path, type, name}`. |
 | `game_query_asset` | Query one asset: existence, kind, size, and `.tscn` skeleton or GDScript header. | `exists`, `kind`, `bytes`, optional `nodes[]`/`extends`/`className`/`tool`. |
+| `game_capture_frame` | Capture one frame as a PNG (view it with `read_image`). | `imagePath`, `width`, `height`. |
 
 Engine selection is per call and order-independent: an explicit `engine` must be registered (`GAME_ENGINE_UNKNOWN` otherwise); without one, a single registered engine auto-selects and several throw `GAME_ENGINE_AMBIGUOUS`. The `engine` field stays optional in every schema so single-engine deployments never repeat it.
 
 ## Errors
 
-Tool bodies throw seam errors through to the caller (`GAME_PROCESS_UNKNOWN` for an unknown process id, `GAME_ENGINE_UNAVAILABLE`/`GAME_ENGINE_AMBIGUOUS` for resolution failures, `GAME_EXECUTABLE_MISSING` when the engine binary is absent, `GAME_QUERY_FAILED` when an engine-side query cannot complete). A build whose engine exits non-zero is a SUCCESSFUL tool call carrying `ok: false` and the log — the model decides from the value; a missing asset is likewise a SUCCESSFUL `game_query_asset` call carrying `exists: false`.
+Tool bodies throw seam errors through to the caller (`GAME_PROCESS_UNKNOWN` for an unknown process id, `GAME_ENGINE_UNAVAILABLE`/`GAME_ENGINE_AMBIGUOUS` for resolution failures, `GAME_EXECUTABLE_MISSING` when the engine binary is absent, `GAME_QUERY_FAILED` when an engine-side query cannot complete, `GAME_CAPTURE_FAILED` when a frame capture cannot complete). A build whose engine exits non-zero is a SUCCESSFUL tool call carrying `ok: false` and the log — the model decides from the value; a missing asset is likewise a SUCCESSFUL `game_query_asset` call carrying `exists: false`.
 
 ## Model Experience
 
@@ -26,11 +27,11 @@ Tool bodies throw seam errors through to the caller (`GAME_PROCESS_UNKNOWN` for 
 
 #### What the model sees
 
-The model sees the generated [`game_build`, `game_run`, `game_read_log`, `game_query_scene`, and `game_query_asset` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-game). The optional `engine` field resolves through the registry at execution time, so the schemas stay identical across engine backends and single-engine deployments.
+The model sees the generated [`game_build`, `game_run`, `game_read_log`, `game_query_scene`, `game_query_asset`, and `game_capture_frame` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-game). The optional `engine` field resolves through the registry at execution time, so the schemas stay identical across engine backends and single-engine deployments.
 
 #### Token effect
 
-Fixed schema cost per request while all five tools are registered.
+Fixed schema cost per request while all six tools are registered.
 
 #### KV Cache effect
 
@@ -78,9 +79,23 @@ Data-dependent; node lists and asset summaries are resent until compaction and s
 
 Append-only; query results follow the reusable request prefix and do not invalidate existing KV-cache entries.
 
+### Frame capture result
+
+#### What the model sees
+
+`game_capture_frame` renders `game_capture_frame: captured <imagePath> (<width>x<height>). Read it back with read_image to inspect the frame.` The PNG is written to disk (an absolute `imagePath`); the model views it through the `read_image` tool, which surfaces the pixels as an image block.
+
+#### Token effect
+
+Data-dependent; the image path and size are resent until compaction, while the pixel data travels through `read_image` (subject to the attachment service's per-image bounds).
+
+#### KV Cache effect
+
+Append-only; the capture result follows the reusable request prefix, and the image block rides a later `read_image` result.
+
 ## Known Limitations and Deferred Work
 
-- **No capture or input tools yet** — `game_capture_frame` / `game_send_input` land with the M3–M4 milestones; until then the model can build, run, read logs, and query scenes/assets.
-- **Query depth is provider-defined** — engine providers decide what a scene/asset query can report (the Godot backend documents its probe and text heuristics); exotic assets may report less than the schema allows.
+- **No input tool yet** — `game_send_input` lands with the M4 milestone; until then the model can build, run, read logs, query scenes/assets, and capture frames.
+- **Query and capture depth are provider-defined** — engine providers decide what a scene/asset query can report and whether headless frame capture is available (the Godot backend documents its probes and text heuristics).
 - **No `game_stop` tool** — started processes run until the session or registry disposes; stop control is host API only.
 - **No background-job integration** — `game_run` returns immediately and the process is registry-tracked, not a `ctx.jobs` job, so it has no job controls and no completion notice.

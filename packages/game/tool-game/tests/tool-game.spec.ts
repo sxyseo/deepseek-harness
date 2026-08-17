@@ -159,10 +159,10 @@ function callTool(ctx: Context, name: string, args: unknown): Promise<{
 }
 
 describe('dsh-tool-game registration', () => {
-  it('registers the five game tools with an optional engine field', async () => {
+  it('registers the six game tools with an optional engine field', async () => {
     const { ctx } = await setup()
     const schemas = ctx.tools.schemas()
-    for (const name of ['game_build', 'game_run', 'game_read_log', 'game_query_scene', 'game_query_asset']) {
+    for (const name of ['game_build', 'game_run', 'game_read_log', 'game_query_scene', 'game_query_asset', 'game_capture_frame']) {
       expect(schemas.some(entry => entry.name === name), name).toBe(true)
     }
     const build = schemas.find(entry => entry.name === 'game_build')
@@ -206,7 +206,7 @@ describe('game_build', () => {
 })
 
 describe('dsh-tool-game HMR safety', () => {
-  it('unregisters the five tools when the contributing fiber disposes', async () => {
+  it('unregisters the six tools when the contributing fiber disposes', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -274,5 +274,14 @@ describe('game_query_asset', () => {
     const result = await callTool(ctx, 'game_query_asset', { project: 'games/2048', assetPath: 'missing.png' })
     expect(result.isError, String(result.error?.message)).toBe(false)
     expect(result.value).toMatchObject({ assetPath: 'missing.png', exists: false, kind: 'other', bytes: null })
+  })
+})
+
+describe('game_capture_frame', () => {
+  it('returns the captured frame metadata', async () => {
+    const { ctx } = await setup()
+    const result = await callTool(ctx, 'game_capture_frame', { project: 'games/2048', outputPath: 'game-project/frame.png' })
+    expect(result.isError, String(result.error?.message)).toBe(false)
+    expect(result.value).toMatchObject({ imagePath: 'game-project/frame.png', width: 64, height: 48 })
   })
 })

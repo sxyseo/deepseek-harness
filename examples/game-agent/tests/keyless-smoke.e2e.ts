@@ -14,7 +14,7 @@ const tsconfigPath = fileURLToPath(new URL('../../../tsconfig.json', import.meta
 const decompress = promisify(zstdDecompress)
 
 describe('game-agent keyless smoke', () => {
-  it('boots the real Loader tree and runs the build/run/query/refactor round trip', async () => {
+  it('boots the real Loader tree and runs the build/run/query/refactor/observe round trip', async () => {
     let persistedHeader: Record<string, unknown> | undefined
     const { stdout, stderr } = await runLoaderSmoke({
       label: 'game-agent',
@@ -43,10 +43,13 @@ describe('game-agent keyless smoke', () => {
         ].join('\n'))
       },
       inspect: async (cwd) => {
-        // The refactor leg really edited the scene file through tool-fs.
+        // The refactor leg really edited the scene file through tool-fs, and
+        // the capture leg really wrote a PNG through the engine shim.
         const edited = await readFile(join(cwd, 'game-project', 'main.tscn'), 'utf8')
         expect(edited).toContain('; DSH_M2_EDIT_MARKER')
         expect(edited).not.toContain('DSH_M2_PRE_EDIT')
+        const captured = await readFile(join(cwd, 'game-project', 'frame.png'))
+        expect(captured.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
         const files = await readdir(cwd, { recursive: true })
         const relativePath = files.find(file => file.endsWith('.jsonl.zstd'))
         if (relativePath === undefined) return
@@ -60,8 +63,8 @@ describe('game-agent keyless smoke', () => {
     const result = lines.at(-1)
     expect(stderr).toBe('')
     // The scripted turn drives every shipped game tool plus the filesystem
-    // refactor legs through the real seams.
-    for (const toolName of ['game_build', 'game_run', 'game_read_log', 'game_query_scene', 'game_query_asset', 'read', 'edit']) {
+    // refactor legs and the observation loop through the real seams.
+    for (const toolName of ['game_build', 'game_run', 'game_read_log', 'game_query_scene', 'game_query_asset', 'read', 'edit', 'game_capture_frame', 'read_image']) {
       expect(events.some(event => event.type === 'tool/call' && event.data.name === toolName), `tool/call ${toolName}`).toBe(true)
     }
     const toolResults = events.filter(event => event.type === 'tool/result')
@@ -69,8 +72,11 @@ describe('game-agent keyless smoke', () => {
     expect(toolResults.some(event => JSON.stringify(event).includes('SHIM: running project'))).toBe(true)
     expect(toolResults.some(event => JSON.stringify(event).includes('Main (Node2D)'))).toBe(true)
     expect(toolResults.some(event => JSON.stringify(event).includes('is a scene'))).toBe(true)
+    expect(toolResults.some(event => JSON.stringify(event).includes('captured ') && JSON.stringify(event).includes('frame.png') && JSON.stringify(event).includes('(1x1)'))).toBe(true)
     expect(result).toMatchObject({ type: 'result' })
-    expect(String(result?.['output'])).toContain('GAME_AGENT_SMOKE_OK scene=Node2D asset=scene edit=done')
+    const output = String(result?.['output'])
+    expect(output).toContain('GAME_AGENT_SMOKE_OK scene=Node2D asset=scene edit=done capture=')
+    expect(output).toContain('frame.png')
     const usage = result?.['usage'] as { reasoningTokens?: number } | undefined
     expect(usage?.reasoningTokens).toBe(1)
     expect(persistedHeader).toMatchObject({ type: 'session' })

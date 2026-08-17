@@ -46,6 +46,11 @@
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
 
+# Durable attachment store: game_capture_frame writes a PNG, and read_image
+# (registered by tool-fs while this is mounted) surfaces it to the model.
+- id: attachment
+  name: '@deepseek-ai/dsh-attachment-local'
+
 # The example composition pre-creates one fresh `main` agent for its test driver.
 - id: agent-spine
   name: '@deepseek-ai/dsh-agent-spine-demo'

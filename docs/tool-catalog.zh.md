@@ -41,7 +41,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-tool-game` | `game_build`、`game_query_asset`、`game_query_scene`、`game_read_log`、`game_run` | `ctx.tools`、`ctx.gameRuntimes` | `tool/call`、`tool/result` | - | game_build、game_run 和 game_read_log 将引擎选择置于 ctx.gameRuntimes 之后，使模型可见 schema 在更换引擎后端（Godot、Unity、Unreal……）时保持稳定。 |
+| `@deepseek-ai/dsh-tool-game` | `game_build`、`game_capture_frame`、`game_query_asset`、`game_query_scene`、`game_read_log`、`game_run` | `ctx.tools`、`ctx.gameRuntimes` | `tool/call`、`tool/result` | - | game_build、game_run 和 game_read_log 将引擎选择置于 ctx.gameRuntimes 之后，使模型可见 schema 在更换引擎后端（Godot、Unity、Unreal……）时保持稳定。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -1916,6 +1916,48 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
   },
   "required": [
     "project"
+  ]
+}
+```
+
+来源：[`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts)
+
+### `game_capture_frame`
+
+将游戏引擎场景捕获为一帧 PNG 文件。返回图片路径与像素尺寸；用 read_image 读回以查看该帧（观察回路）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Engine id (e.g. \"godot\"). Omit when exactly one engine is registered."
+    },
+    "project": {
+      "type": "string",
+      "description": "Path to the engine project directory (for Godot: the folder containing project.godot)."
+    },
+    "outputPath": {
+      "type": "string",
+      "description": "Path the captured PNG is written to; relative paths resolve against the project directory."
+    },
+    "scenePath": {
+      "type": "string",
+      "description": "Scene resource path to capture (e.g. res://main.tscn). Omitted = the project main scene."
+    },
+    "width": {
+      "type": "integer",
+      "description": "Viewport width hint; omitted = the engine default."
+    },
+    "height": {
+      "type": "integer",
+      "description": "Viewport height hint; omitted = the engine default."
+    }
+  },
+  "required": [
+    "project",
+    "outputPath"
   ]
 }
 ```

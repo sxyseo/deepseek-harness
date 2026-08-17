@@ -2,11 +2,11 @@
 
 English | [中文](README.zh.md)
 
-Runnable demo of the game runtime seam: one game-engineering agent that builds, runs, and reads the logs of a Godot project (`game_build` / `game_run` / `game_read_log`), then inspects and refactors it — scene tree and asset queries (`game_query_scene` / `game_query_asset`) followed by real filesystem edits of `.tscn`/scripts through `read` / `edit`.
+Runnable demo of the game runtime seam: one game-engineering agent that builds, runs, and reads the logs of a Godot project (`game_build` / `game_run` / `game_read_log`), inspects and refactors it — scene tree and asset queries (`game_query_scene` / `game_query_asset`) followed by real filesystem edits of `.tscn`/scripts through `read` / `edit` — and observes it by capturing a frame (`game_capture_frame`) and viewing the PNG through `read_image`.
 
 ## Composition
 
-`cordis.yml` mounts the minimal coding-agent core (DeepSeek adapter, local subprocess seam, the `agent-spine-demo` composition, JSONL persistence) plus the game rows — the runtime registry (`defaultEngine: godot`), the Godot backend, and the tool consumer — and the filesystem rows (`fs-local`, the observation policy, `tool-fs`) that close the refactor loop.
+`cordis.yml` mounts the minimal coding-agent core (DeepSeek adapter, local subprocess seam, the `agent-spine-demo` composition, JSONL persistence) plus the game rows — the runtime registry (`defaultEngine: godot`), the Godot backend, and the tool consumer — the filesystem rows (`fs-local`, the observation policy, `tool-fs`) that close the refactor loop, and the durable attachment store that `read_image` needs to surface captured frames.
 
 ## Running it
 
@@ -23,4 +23,4 @@ The test fixture overlays `tests/fixtures/cli.cordis.yml` swap the real adapter 
 | `DSH_GODOT_EXECUTABLE` | Godot executable (default `godot`). |
 | `DSH_GODOT_PREFIX` | Comma-separated wrapper argv inserted after the executable (e.g. `run,org.godotengine.Godot`). |
 
-The keyless smoke (`tests/keyless-smoke.e2e.ts`) boots the real Loader tree from a temp cwd and drives one scripted turn through the whole loop — `game_build` → `game_run` → `game_read_log` → `game_query_scene` → `game_query_asset` → `read` → `edit` — against the shim and a real scene file, then asserts the edited marker landed in the file and the session persisted.
+The keyless smoke (`tests/keyless-smoke.e2e.ts`) boots the real Loader tree from a temp cwd and drives one scripted turn through the whole loop — `game_build` → `game_run` → `game_read_log` → `game_query_scene` → `game_query_asset` → `read` → `edit` → `game_capture_frame` → `read_image` — against the shim and a real scene file, then asserts the edited marker landed in the file, the captured PNG is a valid image, and the session persisted.

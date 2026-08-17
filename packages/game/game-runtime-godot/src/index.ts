@@ -218,9 +218,12 @@ export class GodotRuntime extends EngineRuntime {
     if (request.outputPath.trim() === '') {
       throw new GameError('godot: the capture output path must be a non-empty string', 'GAME_INVALID_REQUEST')
     }
+    // Relative output paths resolve against the project directory — the capture
+    // probe's working directory — so the reported imagePath is always absolute.
+    const outputPath = isAbsolute(request.outputPath) ? request.outputPath : join(projectPath, request.outputPath)
     return {
       projectPath,
-      outputPath: request.outputPath,
+      outputPath,
       ...request.scenePath !== undefined ? { scenePath: request.scenePath } : {},
       ...request.width !== undefined ? { width: request.width } : {},
       ...request.height !== undefined ? { height: request.height } : {},
@@ -337,6 +340,7 @@ export class GodotRuntime extends EngineRuntime {
     }
   }
 
+  // oxlint-disable-next-line typescript/require-await -- filesystem reads are synchronous; async satisfies the seam's Promise contract.
   override async queryAsset(spec: AssetQuerySpec): Promise<AssetInfo> {
     const absolute = join(spec.projectPath, spec.assetPath)
     const info = statSync(absolute, { throwIfNoEntry: false })
@@ -355,6 +359,7 @@ export class GodotRuntime extends EngineRuntime {
     }
   }
 
+  // oxlint-disable-next-line typescript/require-await -- async stub shape: the M4 implementation awaits input delivery.
   override async sendInput(_spec: InputSpec): Promise<InputResult> {
     throw new GameError('the godot backend has not implemented input delivery yet (M4 playtest seam)', 'GAME_CAPABILITY_UNAVAILABLE')
   }
