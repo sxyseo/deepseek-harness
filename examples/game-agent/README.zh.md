@@ -24,3 +24,5 @@ node --import tsx tests/fixtures/game-driver.ts cordis.yml "inspect the main sce
 | `DSH_GODOT_PREFIX` | 逗号分隔、插入在可执行文件之后的包装参数（如 `run,org.godotengine.Godot`）。 |
 
 keyless smoke（`tests/keyless-smoke.e2e.ts`）在临时 cwd 中启动真实 Loader 树，针对 shim 与真实场景文件驱动一个脚本化回合走完整个回路 —— `game_build` → `game_run` → `game_read_log` → `game_query_scene` → `game_query_asset` → `read` → `edit` → `game_capture_frame` → `read_image` —— 并断言编辑标记确实落进了文件、捕获的 PNG 是合法图片、会话已持久化。
+
+JSON-RPC 面（`tests/fixtures/jsonrpc.cordis.yml`）在同一组合之上挂载 SDK 运行时服务器（`dsh-jsonrpc-agent` 线协议）：外部 harness 经 `@deepseek-ai/dsh-sdk-client` 驱动预创建的 `main` agent —— spawn 该 bin、`initialize`、`run(task, { sessionId: 'main' })`、读取 `finalResponse` 与完整 `session.event` 流。冒烟测试（`tests/jsonrpc-smoke.e2e.ts`）用真实 client 经 stdio 无密钥地证明这条路径。

@@ -24,3 +24,5 @@ The test fixture overlays `tests/fixtures/cli.cordis.yml` swap the real adapter 
 | `DSH_GODOT_PREFIX` | Comma-separated wrapper argv inserted after the executable (e.g. `run,org.godotengine.Godot`). |
 
 The keyless smoke (`tests/keyless-smoke.e2e.ts`) boots the real Loader tree from a temp cwd and drives one scripted turn through the whole loop — `game_build` → `game_run` → `game_read_log` → `game_query_scene` → `game_query_asset` → `read` → `edit` → `game_capture_frame` → `read_image` — against the shim and a real scene file, then asserts the edited marker landed in the file, the captured PNG is a valid image, and the session persisted.
+
+The JSON-RPC face (`tests/fixtures/jsonrpc.cordis.yml`) mounts the SDK runtime server (`dsh-jsonrpc-agent` wire protocol) over the same composition: an external harness drives the pre-created `main` agent through `@deepseek-ai/dsh-sdk-client` — spawn the bin, `initialize`, `run(task, { sessionId: 'main' })`, read `finalResponse` plus the full `session.event` stream. The smoke (`tests/jsonrpc-smoke.e2e.ts`) proves that path keyless with the real client over stdio.

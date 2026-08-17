@@ -1,0 +1,40 @@
+# Keyless JSON-RPC overlay for the game-agent example: the SDK runtime
+# server (the `dsh-jsonrpc-agent` wire protocol) over the same scripted
+# mock-adapter composition as cli.cordis.yml. This is the integration face
+# external harnesses consume (see @deepseek-ai/dsh-sdk-client): the smoke
+# drives the full game round trip through the real client over stdio.
+
+- id: cli-mock-llm
+  name: './cli-mock-llm.ts'
+
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'
+  config:
+    maxTokensAsSuccess: false
+
+- id: base
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ../../cordis.yml
+    patches:
+      - id: llm-deepseek
+        name: '@deepseek-ai/dsh-llm-deepseek'
+        disabled: true
+      - id: agent-spine
+        name: '@deepseek-ai/dsh-agent-spine-demo'
+        config:
+          agents:
+            - id: main
+              provider: cli-mock
+              model: cli-mock
+              cwd: !!js process.cwd()
+          workspaceContext: false
+          dshHome: './.dsh-home'
+          skills:
+            filesystem:
+              agentsHome: './.agents-home'
+          persona: 'Keyless game-agent JSON-RPC smoke.'
+      - id: persistence
+        name: '@deepseek-ai/dsh-session-persistence-jsonl'
+        config:
+          root: './.sessions'
