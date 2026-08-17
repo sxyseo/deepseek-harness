@@ -73,6 +73,7 @@ const GROUP_ORDER = [
   'sandbox',
   'e2b',
   'fs',
+  'game',
   'skill',
   'compact',
   'subagent',
@@ -370,6 +371,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['subprocess-local', 'subprocess-e2b'],
     consumers: ['bash-local', 'bash-sandbox', 'terminal-bash', 'lsp-stdio', 'subagent-acp', 'subagent-codex', 'subagent-claude-code'],
     note: 'The bash executors, the PTY shell backend, the LSP host, and the out-of-process ACP, Codex, and Claude Code subagent backends spawn through ctx.subprocess; the service owns process coordinates, tree/session lifetime, stdio dispositions, terminal mechanics, and kill escalation.',
+  },
+  {
+    key: 'gameRuntimes',
+    pkg: 'game-runtime',
+    title: 'Multi-engine game runtime seam',
+    mode: 'seam',
+    implementations: ['game-runtime-godot', 'game-runtime-web'],
+    consumers: ['tool-game'],
+    note: 'Engine backends (Godot, web/Vite) register behind execution-time engine resolution; the model-facing game tools build, run, observe, and query engine projects through the registry without knowing the engine.',
   },
   {
     key: 'shell',

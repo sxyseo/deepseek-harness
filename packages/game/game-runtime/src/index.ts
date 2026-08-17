@@ -162,7 +162,10 @@ export class GameRuntimeRegistry extends Service {
     return () => void dispose()
   }
 
-  /** The registered engine ids, in registration order. */
+  /**
+   * The registered engine ids, in registration order.
+   * @returns the ordered engine ids.
+   */
   names(): readonly string[] {
     return [...this.runtimes.keys()]
   }
@@ -235,7 +238,11 @@ export class GameRuntimeRegistry extends Service {
     return runtime.captureFrame(runtime.resolveCapture(request))
   }
 
-  /** The tracked process record for one id, or `undefined` when unknown. */
+  /**
+   * The tracked process record for one id, or `undefined` when unknown.
+   * @param processId - the process id returned by `game_run`.
+   * @returns the tracked process record, when one exists.
+   */
   process(processId: string): GameProcess | undefined {
     return this.processes.get(processId)
   }

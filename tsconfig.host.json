@@ -201,6 +201,7 @@
     { "path": "./packages/code-runtime/code-runtime-worker-thread" },
     { "path": "./packages/game/game-runtime" },
     { "path": "./packages/game/game-runtime-godot" },
+    { "path": "./packages/game/game-runtime-web" },
     { "path": "./packages/game/tool-game" },
     { "path": "./packages/llm/llm-deepseek" },
     { "path": "./packages/llm/llm-pi-ai" },

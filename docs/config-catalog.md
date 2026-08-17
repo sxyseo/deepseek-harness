@@ -624,6 +624,89 @@ Depends on: [`LocalConfig`](#deepseek-aidsh-fs-local)
 
 Source: [`packages/fs/fs-sandbox/src/index.ts:49`](../packages/fs/fs-sandbox/src/index.ts)
 
+<a id="deepseek-aidsh-game-runtime"></a>
+
+## `@deepseek-ai/dsh-game-runtime`
+
+```ts config-catalog
+/**
+ * Config for the game runtime seam. `defaultEngine` pins which engine wins when a call omits
+ * `engine` (still overridable per call); both are optional — a single registered engine
+ * auto-selects. Operational overrides such as environment variables must feed these same
+ * fields rather than introduce a hidden priority chain.
+ */
+export interface GameRuntimeRegistryConfig {
+  /** Default engine id used when a call omits `engine`. Omitted = auto-select when exactly one registered. */
+  readonly defaultEngine?: string
+}
+```
+
+Source: [`packages/game/game-runtime/src/index.ts:96`](../packages/game/game-runtime/src/index.ts)
+
+<a id="deepseek-aidsh-game-runtime-godot"></a>
+
+## `@deepseek-ai/dsh-game-runtime-godot`
+
+Requires: `gameRuntimes` · `subprocess`
+
+```ts config-catalog
+/** Provider config; every field is optional and defaults below. */
+export interface GodotRuntimeConfig {
+  /** Godot executable: an absolute path or a bare PATH name (default `godot`). */
+  readonly godotExecutable?: string
+  /**
+   * Arguments inserted immediately after the executable, BEFORE the engine
+   * flags — the wrapper/script shape (e.g. `flatpak run org.godotengine.Godot`,
+   * or a Node-run engine shim in tests). A directly executable engine leaves
+   * this empty.
+   */
+  readonly argvPrefix?: string[]
+  /** Termination grace in milliseconds for spawned Godot process trees. */
+  readonly graceMs?: number
+  /** In-memory log cap per stream in bytes (tail-kept beyond it). */
+  readonly maxLogBytes?: number
+}
+```
+
+Source: [`packages/game/game-runtime-godot/src/index.ts:60`](../packages/game/game-runtime-godot/src/index.ts)
+
+<a id="deepseek-aidsh-game-runtime-web"></a>
+
+## `@deepseek-ai/dsh-game-runtime-web`
+
+Requires: `gameRuntimes` · `subprocess`
+
+```ts config-catalog
+/** Provider config; every field is optional and defaults below. */
+export interface WebRuntimeConfig {
+  /** Node executable used to drive Vite and the serve probe (default: this process's node). */
+  readonly nodeExecutable?: string
+  /** Browser executable for frame captures: an absolute path or a bare PATH name (default `chrome`). */
+  readonly browserExecutable?: string
+  /**
+   * Arguments inserted immediately after the browser executable, BEFORE the
+   * capture flags — the wrapper shape (a Node-run browser shim in tests).
+   */
+  readonly browserArgvPrefix?: string[]
+  /** Extra browser arguments appended just before the capture URL (e.g. `--virtual-time-budget=3000`). */
+  readonly browserExtraArgs?: string[]
+  /** Build output directory inside the project, also the capture serving root (default `dist`). */
+  readonly outputDir?: string
+  /** Preview server port for `game_run` (default `4173`, Vite's preview default). */
+  readonly previewPort?: number
+  /** Default capture viewport width (default `1280`). */
+  readonly captureWidth?: number
+  /** Default capture viewport height (default `720`). */
+  readonly captureHeight?: number
+  /** Termination grace in milliseconds for spawned web process trees. */
+  readonly graceMs?: number
+  /** In-memory log cap per stream in bytes (tail-kept beyond it). */
+  readonly maxLogBytes?: number
+}
+```
+
+Source: [`packages/game/game-runtime-web/src/index.ts:65`](../packages/game/game-runtime-web/src/index.ts)
+
 <a id="deepseek-aidsh-goal"></a>
 
 ## `@deepseek-ai/dsh-goal`
@@ -3087,6 +3170,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-tool-ask-user` — requires `tools` · `userQuestions` ([`packages/interaction/tool-ask-user/src/index.ts`](../packages/interaction/tool-ask-user/src/index.ts))
 - `@deepseek-ai/dsh-tool-call-timeout-policy` — requires `tools` ([`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts))
 - `@deepseek-ai/dsh-tool-cordis` — requires `tools` · `systemPrompt` · `dynamicCordisRunner` · `cordisInspect` ([`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts))
+- `@deepseek-ai/dsh-tool-game` — requires `tools` · `gameRuntimes` ([`packages/game/tool-game/src/index.ts`](../packages/game/tool-game/src/index.ts))
 - `@deepseek-ai/dsh-tool-subagent-control` — requires `tools` · `subagents` ([`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts))
 - `@deepseek-ai/dsh-user-questions` ([`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts))
 - `@deepseek-ai/dsh-workspace` — requires `storageDomain` · `sessionPersistence` ([`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts))
@@ -3130,6 +3214,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-client-web-react` ([`packages/client/web-react/src/index.ts`](../packages/client/web-react/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
+- `@deepseek-ai/dsh-game` ([`packages/bundle/game/src/index.ts`](../packages/bundle/game/src/index.ts))
 - `@deepseek-ai/dsh-home-paths` ([`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts))
 - `@deepseek-ai/dsh-hook-protocol` ([`packages/hooks/hook-protocol/src/index.ts`](../packages/hooks/hook-protocol/src/index.ts))
 - `@deepseek-ai/dsh-launch-environment` ([`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts))

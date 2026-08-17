@@ -642,6 +642,78 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gameRuntimes',
+    summary: 'The game runtime registry.',
+    description: 'The game runtime registry. Registered as `ctx.gameRuntimes` (one instance per context).\n\nEngine selection semantics (resolved at execution time, never order-dependent):\n\n- An explicit call `engine` that is registered → that engine.\n- An explicit call `engine` not registered → `GAME_ENGINE_UNKNOWN`.\n- No call `engine`, a configured `defaultEngine` that is registered → that engine.\n- No call `engine`, a configured `defaultEngine` not registered → `GAME_ENGINE_UNKNOWN`.\n- No call or configured engine, exactly one registered engine → that engine.\n- No call or configured engine, multiple registered engines → `GAME_ENGINE_AMBIGUOUS`.\n- No registered engine → `GAME_ENGINE_UNAVAILABLE`.',
+    methods: [
+      {
+        signature: 'register(engine: GameEngineId, runtime: EngineRuntime): () => void',
+        description: 'Register one engine runtime under its engine name. Throws GameError `GAME_DUPLICATE_RUNTIME` if the name is already registered. Returns a disposer; disposed with the calling fiber.',
+        parameters: [{ name: 'engine', description: 'the engine id this runtime serves (e.g. `\'godot\'`); the registry key.' }, { name: 'runtime', description: 'the runtime implementation.' }],
+        returns: 'the disposer that unregisters the runtime.',
+      },
+      {
+        signature: 'names(): readonly string[]',
+        description: 'The registered engine ids, in registration order.',
+        parameters: [],
+        returns: 'the ordered engine ids.',
+      },
+      {
+        signature: 'resolve(request: { engine?: string | undefined }): EngineRuntime',
+        description: 'Resolve the engine runtime for one call with the selection rules above.',
+        parameters: [{ name: 'request', description: 'the optional per-call engine id.' }],
+        returns: 'the selected runtime.',
+      },
+      {
+        signature: 'async build(request: GameBuildRequest): Promise<GameBuildResult>',
+        description: 'Run one build through the selected engine. A non-zero engine exit resolves with `ok: false`; rejection is reserved for resolution and spawn-level failures.',
+        parameters: [{ name: 'request', description: 'the project, optional engine/export preset, and CLI extras.' }],
+        returns: 'the build outcome.',
+      },
+      {
+        signature: 'async start(request: GameRunRequest): Promise<GameProcess>',
+        description: 'Start one game process through the selected engine and track it for `readLog`/disposal. The returned handle stays readable (final log included) after the process exits.',
+        parameters: [{ name: 'request', description: 'the project, optional engine, and CLI extras.' }],
+        returns: 'the live tracked process handle.',
+      },
+      {
+        signature: 'async queryScene(request: SceneQueryRequest): Promise<SceneInfo>',
+        description: 'Query one scene tree snapshot through the selected engine.',
+        parameters: [{ name: 'request', description: 'the project, optional engine, and optional scene path.' }],
+        returns: 'the scene tree snapshot.',
+      },
+      {
+        signature: 'async queryAsset(request: AssetQueryRequest): Promise<AssetInfo>',
+        description: 'Query one project asset through the selected engine. A missing asset resolves with `exists: false`; rejection is reserved for resolution and invalid requests.',
+        parameters: [{ name: 'request', description: 'the project, optional engine, and asset path.' }],
+        returns: 'the asset metadata.',
+      },
+      {
+        signature: 'async captureFrame(request: CaptureRequest): Promise<GameFrame>',
+        description: 'Capture one frame of the project through the selected engine, writing a PNG.',
+        parameters: [{ name: 'request', description: 'the project, output path, optional engine/scene, and viewport hints.' }],
+        returns: 'the captured frame metadata.',
+      },
+      {
+        signature: 'process(processId: string): GameProcess | undefined',
+        description: 'The tracked process record for one id, or `undefined` when unknown.',
+        parameters: [{ name: 'processId', description: 'the process id returned by `game_run`.' }],
+        returns: 'the tracked process record, when one exists.',
+      },
+      {
+        signature: 'readLog(request: GameReadLogRequest): GameLogText',
+        description: 'Read the engine log of one tracked process (offset-based and non-consuming; the final crash log of an exited process stays readable).',
+        parameters: [{ name: 'request', description: 'the process id and its optional engine.' }],
+        returns: 'the bounded log text.',
+      },
+      {
+        signature: 'stop(processId: string): void',
+        description: 'Terminate one tracked process tree (idempotent) and keep its record for a final log read.',
+        parameters: [{ name: 'processId', description: 'the process id returned by `game_run`.' }],
+      },
+    ],
+  },
+  {
     key: 'goals',
     summary: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
     description: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
@@ -2702,6 +2774,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n}',
   },
   {
+    name: 'AssetInfo',
+    declaration: 'export interface AssetInfo {\n    readonly assetPath: string;\n    readonly exists: boolean;\n    readonly kind: GameAssetKind;\n    readonly bytes?: number | undefined;\n    readonly tscn?: TscnSkeleton | undefined;\n    readonly script?: ScriptHeader | undefined;\n}',
+  },
+  {
+    name: 'AssetQueryRequest',
+    declaration: 'export interface AssetQueryRequest {\n    readonly engine?: GameEngineId | undefined;\n    readonly project: string;\n    readonly assetPath: string;\n}',
+  },
+  {
+    name: 'AssetQuerySpec',
+    declaration: 'export interface AssetQuerySpec {\n    readonly projectPath: string;\n    readonly assetPath: string;\n}',
+  },
+  {
     name: 'AssistantMessage',
     declaration: 'export interface AssistantMessage extends Message {\n    readonly role: \'assistant\';\n    readonly source: ModelMessageSource;\n}',
   },
@@ -2736,6 +2820,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CancelOptions',
     declaration: 'export interface CancelOptions {\n    keepInbox?: boolean | undefined;\n}',
+  },
+  {
+    name: 'CaptureRequest',
+    declaration: 'export interface CaptureRequest {\n    readonly engine?: GameEngineId | undefined;\n    readonly project: string;\n    readonly outputPath: string;\n    readonly scenePath?: string | undefined;\n    readonly width?: number | undefined;\n    readonly height?: number | undefined;\n}',
+  },
+  {
+    name: 'CaptureSpec',
+    declaration: 'export interface CaptureSpec {\n    readonly projectPath: string;\n    readonly outputPath: string;\n    readonly scenePath?: string | undefined;\n    readonly width?: number | undefined;\n    readonly height?: number | undefined;\n    readonly env?: Readonly<Record<string, string>> | undefined;\n}',
   },
   {
     name: 'ClientResponse',
@@ -3026,6 +3118,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n}',
   },
   {
+    name: 'EngineRuntime',
+    declaration: 'export abstract class EngineRuntime {\n    readonly engine: GameEngineId;\n    constructor(engine: GameEngineId);\n    abstract resolve(request: GameRunRequest): GameRunSpec;\n    abstract resolveBuild(request: GameBuildRequest): GameBuildSpec;\n    abstract resolveSceneQuery(request: SceneQueryRequest): SceneQuerySpec;\n    abstract resolveAssetQuery(request: AssetQueryRequest): AssetQuerySpec;\n    abstract resolveCapture(request: CaptureRequest): CaptureSpec;\n    abstract build(spec: GameBuildSpec): Promise<GameBuildResult>;\n    abstract start(spec: GameRunSpec): Promise<GameProcess>;\n    abstract captureFrame(spec: CaptureSpec): Promise<GameFrame>;\n    abstract queryScene(spec: SceneQuerySpec): Promise<SceneInfo>;\n    abstract queryAsset(spec: AssetQuerySpec): Promise<AssetInfo>;\n    abstract sendInput(spec: InputSpec): Promise<InputResult>;\n}',
+  },
+  {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
@@ -3088,6 +3184,58 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsWriteOutcome',
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
+  },
+  {
+    name: 'GameAssetKind',
+    declaration: 'export type GameAssetKind = \'scene\' | \'script\' | \'texture\' | \'audio\' | \'font\' | \'shader\' | \'config\' | \'other\';',
+  },
+  {
+    name: 'GameBuildRequest',
+    declaration: 'export interface GameBuildRequest {\n    readonly engine?: GameEngineId | undefined;\n    readonly project: string;\n    readonly exportPreset?: string | undefined;\n    readonly outputPath?: string | undefined;\n    readonly args?: readonly string[] | undefined;\n    readonly cwd?: string | undefined;\n    readonly env?: Readonly<Record<string, string>> | undefined;\n}',
+  },
+  {
+    name: 'GameBuildResult',
+    declaration: 'export interface GameBuildResult {\n    readonly engine: GameEngineId;\n    readonly ok: boolean;\n    readonly exitCode: number | null;\n    readonly outputPath?: string | undefined;\n    readonly log: GameLogText;\n}',
+  },
+  {
+    name: 'GameBuildSpec',
+    declaration: 'export interface GameBuildSpec {\n    readonly engine: GameEngineId;\n    readonly projectPath: string;\n    readonly argv: readonly string[];\n    readonly cwd: string;\n    readonly env?: Readonly<Record<string, string>> | undefined;\n    readonly graceMs: number;\n    readonly outputPath?: string | undefined;\n}',
+  },
+  {
+    name: 'GameEngineId',
+    declaration: 'export type GameEngineId = string;',
+  },
+  {
+    name: 'GameFrame',
+    declaration: 'export interface GameFrame {\n    readonly imagePath: string;\n    readonly width: number;\n    readonly height: number;\n}',
+  },
+  {
+    name: 'GameLogText',
+    declaration: 'export interface GameLogText {\n    readonly text: string;\n    readonly truncated: boolean;\n}',
+  },
+  {
+    name: 'GameProcess',
+    declaration: 'export interface GameProcess {\n    readonly processId: string;\n    readonly engine: GameEngineId;\n    info(): GameProcessInfo;\n    readonly outcome: Promise<GameProcessOutcome>;\n    readLog(): GameLogText;\n    terminate(): void;\n    waitForExit(signal?: AbortSignal): Promise<boolean>;\n}',
+  },
+  {
+    name: 'GameProcessInfo',
+    declaration: 'export interface GameProcessInfo {\n    readonly processId: string;\n    readonly engine: GameEngineId;\n    readonly pid: number;\n    readonly state: \'running\' | \'exited\';\n    readonly exitCode: number | null;\n}',
+  },
+  {
+    name: 'GameProcessOutcome',
+    declaration: 'export interface GameProcessOutcome {\n    readonly exitCode: number | null;\n    readonly signal: NodeJS.Signals | null;\n}',
+  },
+  {
+    name: 'GameReadLogRequest',
+    declaration: 'export interface GameReadLogRequest {\n    readonly processId: string;\n    readonly engine?: GameEngineId | undefined;\n}',
+  },
+  {
+    name: 'GameRunRequest',
+    declaration: 'export interface GameRunRequest {\n    readonly engine?: GameEngineId | undefined;\n    readonly project: string;\n    readonly args?: readonly string[] | undefined;\n    readonly cwd?: string | undefined;\n    readonly env?: Readonly<Record<string, string>> | undefined;\n}',
+  },
+  {
+    name: 'GameRunSpec',
+    declaration: 'export interface GameRunSpec {\n    readonly engine: GameEngineId;\n    readonly projectPath: string;\n    readonly argv: readonly string[];\n    readonly cwd: string;\n    readonly env?: Readonly<Record<string, string>> | undefined;\n    readonly graceMs: number;\n}',
   },
   {
     name: 'GenerateOptions',
@@ -3156,6 +3304,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InboxTarget',
     declaration: 'export type InboxTarget = \'next-turn\' | \'next-step\';',
+  },
+  {
+    name: 'InputResult',
+    declaration: 'export interface InputResult {\n    readonly accepted: boolean;\n}',
+  },
+  {
+    name: 'InputSpec',
+    declaration: 'export interface InputSpec {\n    readonly processId: string;\n    readonly action: string;\n    readonly params?: Readonly<Record<string, unknown>> | undefined;\n}',
   },
   {
     name: 'InvariantFailure',
@@ -3682,6 +3838,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SaveTextSpill {\n    owner: SpillOwner;\n    source: SpillSource;\n    suggestedName: string;\n    content: string;\n}',
   },
   {
+    name: 'SceneInfo',
+    declaration: 'export interface SceneInfo {\n    readonly scenePath: string;\n    readonly root: SceneNode;\n}',
+  },
+  {
+    name: 'SceneNode',
+    declaration: 'export interface SceneNode {\n    readonly path: string;\n    readonly type: string;\n    readonly name: string;\n    readonly children: readonly SceneNode[];\n}',
+  },
+  {
+    name: 'SceneQueryRequest',
+    declaration: 'export interface SceneQueryRequest {\n    readonly engine?: GameEngineId | undefined;\n    readonly project: string;\n    readonly scenePath?: string | undefined;\n}',
+  },
+  {
+    name: 'SceneQuerySpec',
+    declaration: 'export interface SceneQuerySpec {\n    readonly projectPath: string;\n    readonly scenePath?: string | undefined;\n    readonly env?: Readonly<Record<string, string>> | undefined;\n}',
+  },
+  {
     name: 'ScheduledToolDispatch',
     declaration: 'export type ScheduledToolDispatch = {\n    kind: \'post-result\';\n    result: ToolExecutionResult;\n} | {\n    kind: \'final-result\';\n    result: ToolExecutionResult;\n};',
   },
@@ -3696,6 +3868,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScopeKey',
     declaration: 'export type ScopeKey = object;',
+  },
+  {
+    name: 'ScriptHeader',
+    declaration: 'export interface ScriptHeader {\n    readonly extends?: string | undefined;\n    readonly className?: string | undefined;\n    readonly tool: boolean;\n}',
   },
   {
     name: 'SearchFileMatches',
@@ -4448,6 +4624,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ToolSchema',
     declaration: 'export interface ToolSchema {\n    name: string;\n    description: string;\n    parameters: Record<string, unknown>;\n}',
+  },
+  {
+    name: 'TscnNodeEntry',
+    declaration: 'export interface TscnNodeEntry {\n    readonly name: string;\n    readonly type: string;\n    readonly parent: string;\n}',
+  },
+  {
+    name: 'TscnSkeleton',
+    declaration: 'export interface TscnSkeleton {\n    readonly root: string;\n    readonly nodes: readonly TscnNodeEntry[];\n}',
   },
   {
     name: 'TurnEndCancelCause',

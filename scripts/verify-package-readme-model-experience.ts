@@ -113,6 +113,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/bundle/game': { kind: 'indirect', reason: 'The bundle is a patch-list carrier; each inserted row\'s package owns its model-facing behavior.' },
   'packages/game/game-runtime': { kind: 'indirect', reason: 'The registry seam delegates model rendering to the model-facing game tools (dsh-tool-game).' },
   'packages/game/game-runtime-godot': { kind: 'indirect', reason: 'The Godot backend delegates model rendering to the model-facing game tools (dsh-tool-game).' },
+  'packages/game/game-runtime-web': { kind: 'indirect', reason: 'The web backend delegates model rendering to the model-facing game tools (dsh-tool-game).' },
   'packages/llm/llm': { kind: 'none', reason: 'The adapter registry forwards already-assembled requests unchanged.' },
   'packages/llm/token-meter': { kind: 'indirect', reason: 'The measurement service leaves model-visible changes to its consumers.' },
   'packages/lsp/lsp': { kind: 'indirect', reason: 'The provider registry delegates model rendering to dsh-tool-lsp.' },
